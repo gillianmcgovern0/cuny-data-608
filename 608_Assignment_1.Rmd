@@ -1,0 +1,435 @@
+---
+title: "DATA 608 Assignment 1"
+author: "Gillian McGovern"
+date: "2025-09-07"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+## Overview
+
+The attached Excel file contains data on the present allocation of the Infrastructure Investment and Jobs Act funding by State and Territory.
+
+Your story (Data Visualization(s) ) should address the following questions:
+
+Is the allocation equitable based on the population of each of the States and Territories, or is bias apparent?
+
+Does the allocation favor the political interests of the Biden administration?
+
+Notes:
+
+1. You will need to source data on the current (estimated) population of each of the States and Territories (accuracy is more important than precision) and on the official election results of the 2020 Presidential election.
+
+2. You may choose to develop you visualizations using a desktop application or a code library. Your submittal should be in the form of a report (document) or a presentation.
+
+3. This assignment is due by the end of week two of the semester.
+
+## Data Sources
+
+Current (estimated) population of each of the States and Territories:
+
+This data is from the US Census <https://www.census.gov/data/tables/time-series/demo/popest/2020s-state-total.html>
+
+Official election results of the 2020 Presidential election:
+
+This data comes from the Associated Press <https://www.kaggle.com/datasets/callummacpherson14/2020-us-presidential-election-results-by-state?resource=download>
+
+## Load Libraries
+
+```{r}
+library(statebins)
+library(hrbrthemes)
+library(tidyverse)
+library(httr)
+library(dplyr)
+library(stringr)
+library(rvest)
+library(janitor)
+library(stringr)
+library(tidytext)
+library(tibble)
+library(textdata)
+library(tidyr)
+library(readr)
+library(purrr)
+library(forcats)
+library(ggplot2)
+library(colorspace)
+```
+
+
+## Read in Data
+
+```{r}
+# Read in funding data from 2023
+fund_data <- read_csv('https://raw.githubusercontent.com/gillianmcgovern0/cuny-data-608/refs/heads/main/IIJA%20FUNDING%20AS%20OF%20MARCH%202023.csv', show_col_types = FALSE)
+head(fund_data)
+
+# Read in population data from 2023
+pop_data <- read_csv('https://raw.githubusercontent.com/gillianmcgovern0/cuny-data-608/refs/heads/main/NST-EST2024-POP.csv', show_col_types = FALSE)
+head(pop_data)
+
+# Read in 2020 presidential election results data
+election_data <- read_csv('https://raw.githubusercontent.com/gillianmcgovern0/cuny-data-608/refs/heads/main/voting.csv', show_col_types = FALSE)
+head(election_data)
+```
+
+## Clean and Prepare Data
+
+Cleaning up the data:
+
+```{r}
+# Cleaning
+
+# Rename columns
+colnames(fund_data)[colnames(fund_data) == 'State, Teritory or Tribal Nation'] <- 'state_territory_tribal_nation'
+colnames(fund_data)[colnames(fund_data) == 'Total (Billions)'] <- 'total_funding_billions'
+
+# Make states lowercase
+fund_data$state_territory_tribal_nation <- tolower(str_to_title(fund_data$state_territory_tribal_nation))
+head(fund_data, 20)
+
+# Get rid of useless rows and columns
+colnames(pop_data) <- pop_data[3, ]
+names(pop_data)[1:2] <- c("state_territory_tribal_nation", "baseline")
+new_pop_data <- pop_data %>%
+  select("state_territory_tribal_nation", "2023")
+new_pop_data <- new_pop_data[-(1:8), ]
+new_pop_data <- new_pop_data[-(52:59), ]
+# Get rid of characters in file
+new_pop_data$state_territory_tribal_nation <- gsub("\\.", "", new_pop_data$state_territory_tribal_nation)
+# Rename columns
+colnames(new_pop_data) <- c("state_territory_tribal_nation", "total_population_2023")
+# Make states lowercase (to merge later)
+new_pop_data$state_territory_tribal_nation <- tolower(new_pop_data$state_territory_tribal_nation)
+head(new_pop_data)
+```
+
+Merge the data frames:
+
+```{r}
+# Merge the data on state column
+# Fix Delaware spelling in funding data
+fund_data$state_territory_tribal_nation[fund_data$state_territory_tribal_nation == "deleware"] <- "delaware"
+
+# Use states/territories from the US Census dataset (trusted source)
+df_merged <- merge(new_pop_data, fund_data, by = "state_territory_tribal_nation", all.x = TRUE) 
+df_merged
+```
+
+We now have the data for the first question in a tidy format where each row represent a unique state/territory. Population size plays a big role in the amount of funds though, so it should be taken into consideration. Therefore let's normalize the data and create a per capita feature.
+
+```{r}
+# Normalize the data
+
+# Add a per capita column - total funds / total population
+df_merged <- df_merged |>
+  mutate(
+    funding_per_capita = (total_funding_billions * 1000000000) / total_population_2023,
+  )
+head(df_merged)
+```
+
+We now have data that considers the funds given the population. Yet, for the story of this data, seeing the exact funds numbers won't be needed. We just need a general idea of the allocation of funds. So let's set up some bins to simplify the visualization:
+
+```{r}
+# Create bins for simplification
+
+df_merged_bins <- mutate(
+  df_merged,
+  funding_per_capita_bins = cut(
+      funding_per_capita,
+      breaks = c(0, 400, 600, 800, 1000, 6000),
+      labels = c("< $400", "$400 to $600", "$600 to $800", "$800 to $1000", "> $1000"),
+      right = FALSE
+    )
+  )
+head(df_merged_bins)
+```
+
+Now let's look at the election data for the second part:
+
+```{r}
+# Clean data
+
+# Keep states/territory from the Associated Press
+colnames(election_data)[colnames(election_data) == 'state'] <- 'state_territory_tribal_nation'
+election_data$state_territory_tribal_nation <- tolower(election_data$state_territory_tribal_nation)
+election_data_merged <- merge(election_data, df_merged_bins, by = "state_territory_tribal_nation", all.x = TRUE) 
+election_data_merged
+```
+
+```{r}
+# Merge in the data
+election_data_merged <- election_data_merged |>
+  select(state_territory_tribal_nation, biden_win, total_funding_billions, funding_per_capita)
+
+election_data_merged <- election_data_merged |>
+  mutate(
+    results = ifelse(biden_win == 1, "Biden", "Trump")
+  )
+# Final dataset
+head(election_data_merged)
+```
+
+
+## EDA
+
+For this let's just do a quick EDA (given the main point of this assignment are the visualizations).
+
+```{r}
+summary(election_data_merged)
+```
+
+```{r}
+summary(df_merged_bins)
+```
+
+
+## Analysis
+
+### Is the allocation equitable based on the population of each of the States and Territories, or is bias apparent?
+
+Since this is comparing US states, territories and tribal nations, my first data visualization will be a bar graph. For this graph, I want to emphasize the population. A cartogram would be cool to show this feature, but I do not have geometry data (which I believe I would need). Instead I am going to show population by the size of the bars themselves. To do this, I chose the estimated population on the y axis, with the x axis being the states. I then chose to sort by descending population so one can instantly see the largest and smallest populated states. I will also flip the axes, to make it easier to read the states.
+
+To show the funding, I chose to use my bins. The reason I did this is because for this story, it doesn't seem as relevant to know the exact numbers for funding. We just want to know the general trend in allocation. Additionally, I would like to use a gradient, and using a color gradient for continuous data can make the visualization hard to read. I chose different gradients of blue, and desaturated/lightened them to make the colors easier to look at. Since we really want to know which states are getting the most money, I chose to darken the highest bin of funding. That way the eye is drawn to the highest, and the lowest bin has the lightest color. This makes the coloring more intuitive.
+
+I chose to use the funding per capita since population is important for this data.
+
+```{r}
+# This graph is inspired by the Fundamentals of Data Visualization textbook
+
+df_merged_bins <- df_merged_bins |>
+  arrange(desc(total_population_2023))
+
+# Lighten the colors so they're not too harsh to look at
+# Darken the highest bin so the eye focuses on it
+funding_colors_bars <- c(desaturate(lighten(c("#ADD8E6", "#87CEEB", "#6495ED", "#4169E1"), .4), .8), darken("#56B4E9", .3))
+funding_colors_axis <- c(rep("gray30", 4), darken("#56B4E9", .4))
+funding_fontface <- c(rep("plain", 4), "bold")
+
+ggplot(df_merged_bins, aes(x = reorder(state_territory_tribal_nation, total_population_2023), y = total_population_2023, fill = funding_per_capita_bins)) + 
+  geom_col() + 
+  scale_y_continuous(
+    labels = c(0, 1, 2, 3, 4),
+    name = "Estimated Population in 2023 in Millions",
+  ) +
+  scale_fill_manual(
+    values = funding_colors_bars,
+    breaks = c("< $400", "$400 to $600", "$600 to $800", "$800 to $1000", "> $1000"),
+    name = "IIJA Funding Per Capita"
+  ) +
+  coord_flip() + 
+  theme(
+    text = element_text(color = "gray30"),
+    axis.text.x = element_text(color = "gray30"),
+    axis.title.y = element_blank(),
+    axis.line.y = element_blank(),
+    axis.ticks.length = unit(0, "pt"),
+    axis.text.y = element_text(
+      size = 8,
+    ),
+    legend.position.inside = c(.56, .68),
+    legend.background = element_rect(fill = "#ffffffb0")
+  ) +
+  labs(title = "Allocation of IIJA Funding (Per Capita) for the United States")
+```
+
+Story visualization breakdown:
+
+* I can visually see how large each state/territory is by the bar size without using a cartogram
+* With the color gradient, I can easily pinpoint the states that have the largest funding per capita, which is all clustered towards the bottom of the graph (draws the eye)
+  + Wyoming, Vermont, DC, Alaska, North Dakota, and South Dakota, the six least populated states in the US, have the highest funding per capita with all of them having at least $1,000 per person or more
+  + The 4 largest states by population, California, Texas, Florida, and New York, have either the least or second to least smallest amount of funding. The contrast of the largest bars with the faintest colors really highlights how the largest states are getting the least amount of money.
+
+The story of this data is that there is a bias towards the least populated states in the US in terms of allocation of IIJA funds. Why might this be? Possibly the more rural states actually need more funds for their infrastructure compared to the states with larger cities.
+  
+Drawbacks/possible future improvements (with more time):
+
+* The spacing size of the graph could use improvement - the text is small and very squished together making it hard to read
+* Play around with font color/boldness for the states - perhaps calling out certain states might be helpful
+* The 2 colors indicating the smallest funds bins are a bit similar to each other - could possibly differentiate better
+* Play around with reversing the order in the graph so instead of the eye drawing to the corner of the graph, it goes to the top portion which might be easier to read
+
+#### Visualization #2 (Bonus Graph)
+
+The reason why I chose to use R for this assignment was to try my own cartogram heatmap which I learned from the Fundamentals of Data Visualization textbook. I personally really like this style of visualization as it easily shows a visual of the US. The downside of this graph is that it doesn't visually show population size, but for this type of graph, I'm assuming the audience is somewhat familiar with the US. Additionally, the data I'm using still incorporates the population size.
+
+To make the cartogram heatmap, I used geom_statebins which automatically places the states in the correct position which is very convenient. I don't need to add on geometry data. For this graph I used the same bins for funding to easily show the difference in funds.
+
+```{r}
+# Bonus graph
+# This graph is inspired by the Fundamentals of Data Visualization textbook
+
+# geom_statebins only supports the 50 states, to my knowledge
+state_names <- c("Alabama", "Alaska", "Arizona", "Arkansas", "California", "Colorado", "Connecticut", "Delaware", "Florida", "Georgia", "Hawaii", "Idaho", "Illinois", "Indiana", "Iowa", "Kansas", "Kentucky", "Louisiana", "Maine", "Maryland", "Massachusetts", "Michigan", "Minnesota", "Mississippi", "Missouri", "Montana", "Nebraska", "Nevada", "New Hampshire", "New Jersey", "New Mexico", "New York", "North Carolina", "North Dakota", "Ohio", "Oklahoma", "Oregon", "Pennsylvania", "Rhode Island", "South Carolina", "South Dakota", "Tennessee", "Texas", "Utah", "Vermont", "Virginia", "Washington", "West Virginia", "Wisconsin", "Wyoming")
+
+df_merged_bins_updated <- df_merged_bins
+
+colnames(df_merged_bins_updated)[colnames(df_merged_bins_updated) == 'state_territory_tribal_nation'] <- 'state'
+
+filtered_df_merged_bins_updated <- df_merged_bins_updated %>%
+  filter(state %in% tolower(state_names))
+head(filtered_df_merged_bins_updated)
+
+filtered_df_merged_bins_updated$state <- str_to_title(filtered_df_merged_bins_updated$state)
+
+filter(filtered_df_merged_bins_updated) %>%
+  ggplot(aes(state = state, fill = funding_per_capita_bins)) +
+  geom_statebins(lbl_size = 14/.pt) +
+  expand_limits(x = -1.3) + # make space for legend
+  coord_equal(expand = FALSE) +
+   scale_fill_discrete_sequential(
+    h1 = -83, h2 = 20, c1 = 30, cmax = 40, c2 = 0, l1 = 20, l2 = 100, p1 = 1, p2 = 1.2, rev = TRUE, 
+    name = "IIJA Funding Per Capita",
+    nmax = 7,
+    order = 2:6,
+    guide = guide_legend(
+      override.aes = list(colour = "white", size = 1),
+      reverse = TRUE
+    )
+  ) +
+  theme(
+    panel.grid.major = element_blank(), # Removes grid lines
+    panel.grid.minor = element_blank(),
+    panel.border = element_blank(),
+    panel.background = element_blank(),
+    axis.title.x = element_blank(), # Remove x-axis title
+    axis.text.x = element_blank(),  # Remove x-axis text (labels)
+    axis.title.y = element_blank(), # Remove y-axis title
+    axis.text.y = element_blank(),   # Remove y-axis text (labels)
+    axis.ticks.x = element_blank(), # Remove x-axis tick marks
+    axis.ticks.y = element_blank(),  # Remove y-axis tick marks
+    legend.background = element_blank(),
+    legend.position = c(0, 1),
+    legend.justification = c(0, 1),
+    legend.spacing.x = grid::unit(2, "pt"),
+    legend.spacing.y = grid::unit(2, "pt"),
+    legend.title = element_text(hjust = 0.5),
+    legend.key.width = grid::unit(18, "pt"),
+    legend.key.height = grid::unit(15, "pt")
+  )
+```
+
+Story visualization breakdown:
+
+* I can visually see the layout of the US - the Midwest and Alaska are the darkest colored states indicating the states with the highest funds per capita
+* This graph assumes that the audience is familiar with the Midwest and Alaska, and how they are generally known to be less populated states in comparison with the states containing the largest cities like LA or NYC
+
+Story of this data is that there is a bias towards the least populated states in the US in terms of allocation of IIJA funds.
+  
+Drawbacks of this graph:
+
+* Does not show the population size
+* To my knowledge, it can only show the 50 states, so you lose some data
+* I needed to remove a lot of unwanted features (such as a background grid) of geom_statebins which was a bit tedious
+
+Overall this graph is very pleasing and clear to me, but not might be to all audiences.
+
+### Does the allocation favor the political interests of the Biden administration?
+
+Since this part of the analysis also looks at comparing states, I will choose to use another bar graph. For this question, I want to focus on the allocation of funds, so I will make the total funds my y axis, with the fill for my bars representing the 2020 presidential election results. For the election results, I will choose blue for Biden which is the usual color for the democratic party and red for Trump for the republican party. I will also lighten the colors for this graph as well to make the colors less harsh for the eyes to look at.
+
+For the first graph, let's just look at total funding (not taking into account population size).
+
+```{r}
+# Election bar graph
+
+colors_bars <- c(lighten("blue", amount = 0.2), lighten("red", amount = 0.2))
+
+ggplot(election_data_merged, aes(x = reorder(state_territory_tribal_nation, total_funding_billions), y = total_funding_billions, fill = results)) + 
+  geom_col() + 
+  scale_y_continuous(
+    name = "IIJA Funding (in Billions)",
+  ) +
+  scale_fill_manual(
+    values = colors_bars,
+    name = "Election Results"
+  ) +
+  coord_flip() + 
+  theme(
+    text = element_text(color = "gray30"),
+    axis.text.x = element_text(color = "gray30"),
+    axis.title.y = element_blank(),
+    axis.line.y = element_blank(),
+    axis.ticks.length = unit(0, "pt"),
+    axis.text.y = element_text(
+      size = 8,
+    ),
+    legend.position.inside = c(.56, .68),
+    legend.background = element_rect(fill = "#ffffffb0")
+  ) +
+  labs(title = "Allocation of IIJA Funding (in Billions) for the United States")
+```
+
+Story visualization breakdown:
+
+* I can visually see that 7 out of the top 10 states are blue indicating a Biden state
+* Smallest funded states are also Biden
+* Most Trump states land in the middle
+
+Story of this data is that the highest funded states are Biden supporters. Yet, this data does not take into account population size which does matter.
+  
+Drawbacks/future improvements:
+
+* Does not include the population size
+* Similar to the other bar graph, the text and bars are quite small and hard to read
+
+Now let's take into consideration population by looking at per capita:
+
+```{r}
+# Per capita election bar graph
+# Final visualization
+
+ggplot(election_data_merged, aes(x = reorder(state_territory_tribal_nation, funding_per_capita), y = funding_per_capita, fill = results)) + 
+  geom_col() + 
+  scale_y_continuous(
+    name = "IIJA Funding (US Dollars Per Capita)",
+  ) +
+  scale_fill_manual(
+    values = colors_bars,
+    name = "Election Results"
+  ) +
+  coord_flip() + 
+  theme(
+    text = element_text(color = "gray30"),
+    axis.text.x = element_text(color = "gray30"),
+    axis.title.y = element_blank(),
+    axis.line.y = element_blank(),
+    axis.ticks.length = unit(0, "pt"),
+    axis.text.y = element_text(
+      size = 8,
+    ),
+    legend.position.inside = c(.56, .68),
+    legend.background = element_rect(fill = "#ffffffb0")
+  ) +
+  labs(title = "Allocation of IIJA Funding (US Dollars Per Capita) for the United States")
+```
+
+Story visualization breakdown:
+
+* I can visually see that only 4 out of the top 10 states are blue indicating a Biden state
+* Smallest funded states are also Trump
+* Most Biden states land in the middle/towards the bottom of the graph
+
+Story of this data is that the highest funded states (per capita) are Trump supporter states. This tells a different story than the previous graph. This tells us Biden is giving more money to states that did not support him back in 2020. This could indicate that Biden was trying to win these states by giving them more resources, despite their lower population size.
+  
+Drawbacks/future improvements:
+
+* Similar to the other bar graph, the text and bars are quite small and hard to read
+
+Since this takes population into consideration, this would be the final visualization I would use.
+
+## Conclusions
+
+Overall this assignment gave very good practice in creating detailed graphs. What these graphs showed us is that the least populated states are getting higher funds per capita. Although it may seem the states with the highest populations are getting the most funds, if you take into account the amount of people in each state, the funds are a lot less for the states with bigger cities. One reason for this could be due to infrastructure issues in rural areas that need the funds. Another reason could be the story from our 2nd set of graphs related to the election results. Possibly the Biden administration wanted to win over states that did not vote for him in 2020. The data comes from 2023, so it's possible this allocation was heavily related to the 2024 election year.
+
+Future Directions:
+
+* Although R created very nice graphs, I would have liked to use Python. I did not see a tool/library to help with the cartogram heatmp for Python, which is why I went with the R instead giving that this data is geospatial.
+  + Possibly next time, I could add in my own latitude/longitude data to map out the US to create my own graph
+* If I had more time, I would look into datasets that have more of the territories from the original dataset. Due to time, I just went with what the US Census and Associated Press had available.
+* Find a better way to include state data, and make the graph not so squished
