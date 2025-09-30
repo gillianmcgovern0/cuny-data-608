@@ -1,0 +1,586 @@
+---
+title: "DATA 622 Assignment 1"
+author: "Gillian McGovern"
+date: "2025-09-24"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+## Background
+
+A Portuguese bank conducted a marketing campaign (phone calls) to predict if a client will subscribe to a term deposit  The records of their efforts are available in the form of a dataset. The objective here is to apply machine learning techniques to analyze the dataset and figure out most effective tactics that will help the bank in next campaign to persuade more customers to subscribe to the bank's term deposit.
+
+Download the Bank Marketing Dataset from: https://archive.ics.uci.edu/dataset/222/bank+marketing
+
+## Dataset
+
+For this assignment, I chose the full dataset, `bank-additional-full.csv` which has all observations and features. I would prefer to start out with all the data, then narrow it down after performing my EDA and algorithm selection. I wouldn't want to disregard some features or observations before looking at them and knowing if they're important or not.
+
+Input variables:
+   # bank client data:
+   1 - age (numeric)
+   2 - job : type of job (categorical: "admin.","unknown","unemployed","management","housemaid","entrepreneur","student",
+                                       "blue-collar","self-employed","retired","technician","services") 
+   3 - marital : marital status (categorical: "married","divorced","single"; note: "divorced" means divorced or widowed)
+   4 - education (categorical: "unknown","secondary","primary","tertiary")
+   5 - default: has credit in default? (binary: "yes","no")
+   6 - housing: has housing loan? (binary: "yes","no")
+   7 - loan: has personal loan? (binary: "yes","no")
+   # related with the last contact of the current campaign:
+   8 - contact: contact communication type (categorical: "unknown","telephone","cellular") 
+   9 - day: last contact day of the month (numeric)
+  10 - month: last contact month of year (categorical: "jan", "feb", "mar", ..., "nov", "dec")
+  11 - duration: last contact duration, in seconds (numeric)
+   # other attributes:
+  12 - campaign: number of contacts performed during this campaign and for this client (numeric, includes last contact)
+  13 - pdays: number of days that passed by after the client was last contacted from a previous campaign (numeric, -1 means client was not previously contacted)
+  14 - previous: number of contacts performed before this campaign and for this client (numeric)
+  15 - poutcome: outcome of the previous marketing campaign (categorical: "unknown","other","failure","success")
+  16 - emp.var.rate: employment variation rate - quarterly indicator (numeric)
+  17 - cons.price.idx: consumer price index - monthly indicator (numeric)
+  18 - cons.conf.idx: consumer confidence index - monthly indicator (numeric)
+  19 - euribor3m: euribor 3 month rate - daily indicator (numeric)
+  20 - nr.employed: number of employees - quarterly indicator (numeric)
+  
+  Output variable (desired target):
+  21 - y - has the client subscribed a term deposit? (binary: "yes","no")
+
+### 1. Importing Libraries
+
+```{r libraries}
+#Import Libraries
+library(readr) # to uses read_csv function
+library(tidyverse)
+
+library(e1071)  # For skewness function
+library(corrplot)
+
+library(caret)
+library(ROSE)
+library(smotefamily)
+
+library(dplyr)
+library(caret)
+library(MASS)
+library(lmtest)
+library(car)
+library(GGally)
+library(gmodels)
+library(correlationfunnel)
+library(DataExplorer)
+library(reshape2)
+library(readr)
+library(tidymodels)
+library(themis)
+```
+
+### 2. Data Ingestion
+
+```{r}
+# Full dataset
+data_raw <- read.csv("https://raw.githubusercontent.com/gillianmcgovern0/cuny-data-608/refs/heads/main/bank-additional-full.csv", sep = ";")
+```
+
+### 3. Exploratory Data Analysis
+
+General overview such as summary stats, missing values, and duplicates:
+
+```{r}
+# Structure of the data 
+str(data_raw)
+
+# Glimpse of the data
+head(data_raw)
+
+# Summary
+summary(data_raw)
+plot_intro(data_raw)
+
+# Check for duplicates
+duplicates <- duplicated(data_raw)
+
+# Print the duplicates
+print(data_raw[duplicates, ])
+```
+
+We can see here there are 41,188 observations with 20 features and one target variable, `y` (subscribed or not subscribed to a term deposit). The dataset contains discrete and continuous features and no missing observations or columns. `education` and `month` are ordinal features, while the remaining categorical features are nominal.
+
+There are no missing values, but there are duplicate rows in this dataset, so we will have to remove them for an accurate EDA.
+
+Some interesting things to note right from the start are:
+
+* `age` average is 40 so most people being called are in their 30s or 40s
+* `campaign` (number of contacts performed during this campaign and for this client) average is not many at ~2. Max value is significantly larger.
+* `pdays` mostly consists of a value of 999 which makes sense given 999 means never contacted
+* `previous` mostly consists of zeroes, with a low max value
+* `emp.var.rate` ranges from positive to negative
+
+Let's see how many observations are "missing" (and have a value of 999) for `pdays`:
+
+```{r}
+# Check how many obs where `pdays` is not applicable (= 999)
+perc_999 <- data_raw %>%
+  filter(pdays == 999) %>%
+  summarise(percentage = n() / nrow(data_raw) * 100) %>%
+  pull(percentage)
+print(perc_999)
+```
+
+Over 96% of the observations, `pdays` is not even applicable. This matches our summary stats. So we should probably remove this variable when data cleaning.
+
+Let's do an initial clean up the data to make the EDA easier and valid:
+
+```{r}
+# Rename columns
+names(data_raw)[names(data_raw) == "emp.var.rate"] <- "emp_var_rate"
+names(data_raw)[names(data_raw) == "cons.price.idx"] <- "cons_price_idx"
+names(data_raw)[names(data_raw) == "cons.conf.idx"] <- "cons_conf_idx"
+names(data_raw)[names(data_raw) == "nr.employed"] <- "nr_employed"
+
+# Remove duplicates
+data_raw <- unique(data_raw)
+str(data_raw)
+```
+
+After removing duplicates, we have 41,176 unique observations.
+
+Let's create new data frames for categorical and numerical features:
+
+```{r}
+# Break up numerical and categorical variables
+data_raw_numeric <- data_raw |>
+  dplyr::select(where(is.numeric))
+numerical_predictors <- names(data_raw_numeric)
+print(numerical_predictors)
+
+data_raw_categorical <- data_raw |>
+  dplyr::select(where(is.factor) | where(is.character))
+categorical_predictors <- names(data_raw_categorical)[names(data_raw_categorical) != "y"]
+print(categorical_predictors)
+```
+
+##### 3.1 Observing Correlation
+
+Correlation Between Predictors and Target Variable:
+
+Let's create a correlation funnel to visualize the most highly correlated predictors against the target variable.
+
+```{r, fig.width=10, fig.height=8}
+# Correlation Funnel using plot_correlation_funnel
+# This binarizes the features so it includes categorical features
+data_raw_binarized <- data_raw %>%
+    binarize(n_bins = 4, thresh_infreq = 0.01)
+data_raw_correlated_table <- data_raw_binarized %>%
+    correlate(target = y__yes)
+data_raw_correlated_table %>%
+    plot_correlation_funnel(interactive = FALSE)
+```
+
+We can see from the correlation funnel that the highest correlation features (based on absolute magnitude), are:
+
+* duration
+* pdays
+* poutcome
+* nr_employed
+* euribor3m
+* emp_var_rate
+* previous
+* cons_price_idx
+* contact
+
+```{r}
+# Top 10 highly correlated features
+data_raw_correlated_table %>%
+    filter(feature %in% c("duration", "pdays", "poutcome",
+                          "nr_employed", "euribor3m", "emp_var_rate", "previous", "cons_price_idx", "contact")) %>%
+    plot_correlation_funnel(interactive = FALSE, limits = c(-0.4, 0.4))
+```
+
+We can see that the following scenarios are highly correlated to a "yes" for subscription:
+
+* 319s (or greater) phone call duration (longer phone calls are more likely to have a success)
+* Outcome of the previous marketing campaign was a success
+* Up to ~5,099 employees (lower values)
+* euribor3m range from -Infinity to 1.344 (lower values)
+* Employment variation rate range from -Inf to -1.8 (lower values)
+* CPI range from -Infinity to 93.075 (lower values)
+* The way of contact is cellular
+
+So we now have an idea what features are important.
+
+Now let's look at a correlation matrix to see the correlation between each predictor variable.
+
+Correlation Matrix for Numeric Variables:
+
+```{r}
+# Correlation Matrix for Numeric Variables
+
+data_raw_numeric <- data_raw |>
+  dplyr::select(where(is.numeric))
+
+cor_matrix <- cor(data_raw_numeric, use = "complete.obs")
+
+# Plot
+corrplot(cor_matrix, 
+         method = "circle", 
+         type = "upper", 
+         tl.cex = 0.5, 
+         tl.srt = 45)  # Rotate text diagonally
+par(mar = c(1, 1, 4, 1))  # top margin = 4 lines
+
+# Convert to DF to view pairs
+melt_cor <- melt(cor_matrix)
+filtered_cor <- melt_cor[melt_cor$Var1 != melt_cor$Var2 & as.numeric(melt_cor$Var1) < as.numeric(melt_cor$Var2), ]
+sorted_cor <- filtered_cor[order(abs(filtered_cor$value), decreasing = TRUE), ]
+head(sorted_cor)
+```
+
+We can see from these two outputs that highly positive correlated predictors are:
+
+* `emp_var_rate` and `euribor3m`
+* `euribor3m` and `nr_employed`
+* `emp_var_rate` and `nr_employed`
+* `emp_var_rate` and `cons_price_idx`
+* `cons_price_idx` and `euribor3m`
+
+These relationships make sense for the most part since these are all economic features, and as employment increases, inflation usually also increases. What is interesting is that `emp_var_rate` increases as `nr_employed` increases. I would expect this to have an inverse relationship meaning a higher employee count would lead to a more stable job market, and therefore a lower employee variation rate.
+
+Top highly negative correlated predictors are:
+
+* `pdays` and `previous`
+* `previous` and `nr_employed`
+* `previous` and `euribor3m`
+* `previous` and `emp_var_rate`
+
+As the amount of days go by without any contact increases, this must mean the amount of previous calls decrease. Although this shouldn't be fully trusted since we will most likely remove `pdays` anyway. It's interesting as the number of contacts performed before this campaign and for this client gets smaller, the number of people employed increases. I would think this relationship would be positive meaning as the number of previous calls increases, the number of employees increases (providing the service to do the previous calls). I would imagine that previous calls might be low to due to the fact there's low staff and bandwidth is low. 
+
+Categorical features:
+
+Some of the categorical features are very detailed, making it hard to graph and visualize. For this graph, let's combine some features to simplify things:
+
+```{r}
+# Combine Variables (Feature Engineering)
+
+data_raw_combined <- data_raw %>%
+  mutate(education_combined = case_when(
+    data_raw$education %in% c('basic.4y','basic.6y','basic.9y') ~ "basic" ,
+    data_raw$education == "high.school" ~ "high.school"  ,
+    data_raw$education == "illiterate"  ~ "illiterate"  ,
+    data_raw$education == "professional.course" ~ "professional.course",
+    data_raw$education == "university.degree" ~ "university.degree",
+    data_raw$education == "unknown" ~ "unknown"
+  )
+)
+
+data_raw_combined <- data_raw_combined %>%
+  mutate(employed_status = case_when(
+    data_raw$job %in% c('admin.','blue-collar','entrepreneur', 'housemaid', 'management', 'services', 'technician', 'self-employed') ~ "employed",
+    data_raw$job == "student" ~ "student",
+    data_raw$job == "retired"  ~ "retired",
+    data_raw$job == "unemployed" ~ "unemployed",
+    data_raw$job == "unknown" ~ "unknown"
+  )
+)
+
+data_raw_combined <- data_raw_combined %>%
+  mutate(season = case_when(
+    data_raw$month %in% c('sep','oct', 'nov') ~ "fall",
+    data_raw$month %in% c('dec','jan', 'feb') ~ "winter",
+    data_raw$month %in% c('mar','apr', 'may') ~ "spring",
+    data_raw$month %in% c('jun','jul', 'aug') ~ "summer"
+  )
+)
+
+data_raw_combined <- data_raw_combined %>%
+  dplyr::select(-c(education, job, month))
+```
+
+
+```{r, fig.width=10, fig.height=8}
+# Creates dummy variables for categorical features
+plot_correlation(na.omit(data_raw_combined), maxcat = 10L)
+```
+
+Here we get some insights about the correlations between the features such as:
+
+* `age` and `marital_married` has a positive relationship (as people get older, more likely to get married and not be single)
+* `campaign` and `nr_employed` has a positive relationship (as more contacts are made, that usually means there are employees present to make the contact)
+* `poutcome_success` and `poutcome_failure` both have a negative relationship with `nr_employed` which seems strange but matches with our previous chart results
+
+#### 3.2 Relationship Between Variables
+
+Numerical feature relationships via scatterplot:
+
+```{r, fig.width=10, fig.height=8}
+# Numerical relationships
+ggpairs(data_raw_numeric, progress = FALSE)
+```
+
+This graph is a bit hard to read, but none of these relationships show super strong linear relationships. We can visually see that generally as employee variation rate increases, the number of employees increases. We can also clearly see that as number of employees increase, `euribor3m` also increases.
+
+Two-way Cross-Tabulations - Categorical Variables:
+
+```{r}
+# Comparing categorical features with the target variable
+CrossTable(x = data_raw_combined$y, y = data_raw_combined$employed_status, chisq = TRUE)
+CrossTable(x = data_raw_combined$y, y = data_raw_combined$marital, chisq = TRUE)
+CrossTable(x = data_raw_combined$y, y = data_raw_combined$default, chisq = TRUE)
+CrossTable(x = data_raw_combined$y, y = data_raw_combined$housing, chisq = TRUE)
+CrossTable(x = data_raw_combined$y, y = data_raw_combined$loan, chisq = TRUE)
+CrossTable(x = data_raw_combined$y, y = data_raw_combined$contact, chisq = TRUE)
+CrossTable(x = data_raw_combined$y, y = data_raw_combined$season, chisq = TRUE)
+CrossTable(x = data_raw_combined$y, y = data_raw_combined$day_of_week, chisq = TRUE)
+```
+
+Based on the p-value, `employed_status`, `marital`, `default`, `day_of_week`, `contact` and `season` are are statistically significant, indicating these variables are associated with the target variable. `housing` and `loan` are interestingly not statistically significant.
+
+#### 3.3 Distributions
+
+```{r}
+# Distributions
+
+
+# Numeric Variables
+data_raw_numeric |>
+  pivot_longer(cols = everything(), names_to = "Feature", values_to = "Value") |>
+  filter(!is.na(Value)) |>
+  ggplot(aes(x = Value)) +
+  geom_histogram(bins = 30, fill = "skyblue", color = "black") +
+  facet_wrap(~Feature, scales = "free") +
+  ggtitle("Histograms of Numerical Features")
+
+# Categorical Variables
+data_raw_categorical |>
+  pivot_longer(cols = everything(), names_to = "Feature", values_to = "Value") |>
+  filter(!is.na(Value)) |>
+  ggplot(aes(x = Value)) +
+  geom_histogram(bins = 30, fill = "skyblue", color = "black", stat="count") +
+  facet_wrap(~Feature, scales = "free") +
+  ggtitle("Count plot of Categorical Features") +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1))
+
+# Distribution of target variable
+data_raw |>
+  dplyr::select(y) |>
+  ggplot() + 
+  aes(x = y) + 
+  geom_histogram(bins= 40,fill = "blue", color = "black", stat="count") + 
+  labs(title = "Distribution of y", y = "Count") +  
+  theme_minimal()
+
+# Count missing values per Variable
+data_raw %>%
+  summarise_all(~ sum(is.na(.))) %>%
+  pivot_longer(cols = everything(), names_to = "variable", values_to = "missing_count") %>%
+  filter(missing_count != 0) %>%
+  arrange(desc(missing_count))
+
+# Categorical Variables (Filtered for "Yes" Subscribed)
+data_raw_categorical_yes <- subset(data_raw_categorical, y == "yes") 
+
+data_raw_categorical_yes |>
+  pivot_longer(cols = everything(), names_to = "Feature", values_to = "Value") |>
+  filter(!is.na(Value)) |>
+  ggplot(aes(x = Value)) +
+  geom_histogram(bins = 30, fill = "skyblue", color = "black", stat="count") +
+  facet_wrap(~Feature, scales = "free") +
+  ggtitle("Count plot of Categorical Features") +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1))
+```
+
+For the numerical variables:
+
+* `age` is bimodal and right skewed
+* `campaign` is unimodal and right skewed (which makes sense since the mean is 2.568)
+* `cons_conf_idx` is multimodal 
+* `cons_price_idx` is multimodal
+* `duration` is unimodal and right skewed
+* `emp_var_rate` is multimodal and left skewed
+* `euribor3m` is multimodal and left skewed
+* `nr_employed` is multimodal and left skewed
+* `pdays` is unimodal and left skewed: 999 means never contacted which seems to happen most of the time. This would be a variable to look into cleaning up or getting rid of.
+* `previous` is unimodal and right skewed: With a mean of 0.173 this makes sense, most of the time this value is 0 with only a max of 7
+
+Overall, most of these values are skewed and do not follow a normal distribution. A lot of the social and economic features such as `euribor3m` are multimodal and left skewed meaning these values are usually higher, but depending on the year/state of the world, these values can change. 
+
+For the categorical variables:
+
+* More cell contacts than telephone
+* Day of the week looks approximately uniformly distributed with Monday and Thursday being the most frequent
+* More observations with no credit in default
+* University and high school are the most frequent education types
+* Slightly more than half the people have a housing loan
+* Most frequent jobs are blue-collar, admin and technician
+* Most people have personal loans
+* Most people are married followed by single
+* Most frequent months are May, July, August and June (summer and spring months)
+* Most of the time the outcome of the previous marketing campaign is nonexistent
+
+The target variable `y` is binary and categorical, this confirms that we are dealing with a binary classification problem. There are many more observations with an output of "no" compared to "yes". This could affect the algorithm we choose, so we should be mindful that we get a fair mixture of both "yes" and "no" observations to build the best model.
+
+Focusing on just the "yes" observations did not give us much more insight, except for Thursday is now the most frequent day, which might be a good indication for when to contact. Additionally, for job, admin is still the most frequent, but technician is above blue-collar. The month data is a bit more even, but May is still the highest and December is still the lowest. Lastly, we can see here how `housing` and `loan` might have much of an impact.
+
+##### Note on "Unknown" Values
+
+I should also note, although a few of these predictors contain "unknown" values, am I treating this as an actual category and not as missing data. This seems intentional and should be kept in the data.
+
+##### 3.5 Identifying Outliers
+
+```{r, fig.width=10, fig.height=8}
+# Boxplots of all numeric predictors 
+
+ggplot(stack(data_raw_numeric), aes(x = ind, y = values)) + 
+  geom_boxplot(color = 'skyblue', outlier.color = 'red') +
+  coord_cartesian(ylim = c(0, 700)) +
+  theme(legend.position = "none",
+        axis.text.x = element_text(angle = 45, hjust = 1),
+        panel.background = element_rect(fill = 'grey96')) +
+  labs(title = "Boxplots of Predictor Variables", x="Predictors")
+```
+
+Many predictor variables have outliers shown by the red dots. Variables such as `age`, `duration`, `campaign`, `pdays`, `previous` and `cons_conf_idx` have a very large spread (except for `cons_conf_idx`) and contain values that are way above the interquartile range. This indicates that some observations had higher values in these categories. The other variables show a fairly small spread. These boxplots match what we've already seen so far.
+
+```{r}
+# Since we have a lot of variables, let's look at our combined dataset
+for (col_name in names(data_raw_combined)) {
+  plot_boxplot(data_raw_combined, by = col_name, geom_boxplot_args = list("outlier.color" = "red"))
+}
+```
+
+Some insights from these boxplots are:
+
+* Younger ages had a slightly larger spread and more outliers for `campaign` and `duration`
+* People with no personal loans had larger spread and more outliers for `duration`
+* Contact via telephone had larger spread and more outliers for `duration`
+
+Although there are outliers, I would keep these data points in the model for now to avoid removing any important observations. After creating the model, I would check for outliers, or bad leverage points, by calculating Cook's distance and looking at the residuals. If any data points pop up there, I would then circle back to the dataset to view the observations and consider removing or imputing (find out more information before removing).
+
+#### 4 Algorithm Selection
+
+The two classification algorithms I would consider for this dataset would be Logistic Regression and Decision Tree. Some major characteristics about this dataset is that it has a binary output, if the client has subscribed to a term deposit, and that it has labelled data, so we would be using a supervised learning algorithm. Logistic Regression's primary usage is for classification, particularly for binary classification since it estimates the probability that the target outcome occurs. It will also give the impact of each predictor, which is important when determining churn. Additionally, it is a supervised learning algorithm, which fits our labelled dataset. Logistic Regression can also handle categorical and numerical variables (need to create binary or dummy variables).
+
+The pros for Logistic Regression are that it's very interpretable so it can be easily explained to people who are non-technical. Additionally, L1 and L2 regularization can be applied to Logistic Regression to help with high dimensional datasets and prevent overfitting (although normalization or standardization is recommended here which can be a con). Logistic Regression is also fast to train which is a plus. There are also some cons to Logistic Regression. Logistic Regressions requires that independent variables are linearly related to the log odds (log(p/(1-p)) of the target variable. It creates linear boundaries which can be difficult to have for complex datasets (linear boundaries for data doesn't happen very often in the real world). Also, training is fast, but prediction can be slow compared to a Decision Tree (still overall fast though). Additionally, there can't be any multicollinearity between the predictors (that would make the model less accurate). Another assumption of Logistic Regression is the independence of observations. Lastly, the number of observations should be greater than the number of features for a Logistic Regression model, otherwise overfitting might occur.
+
+Decision Tree would also be a good option for this dataset. Decision Tree is also a supervised learning algorithm and it's best used when interpretability is most important. Having decision rules makes it very easily explainable, which can be useful from a business perspective. It can also handle numerical and categorical features, which this dataset has. Similar to Logistic Regression, it is also used a lot for customer churn prediction.
+
+Besides it's interpretability, the pros of Decision Trees are that it can handle missing values. Additionally, it does not require feature scaling or normalization. It can do well for many types of problems making it versatile. Decision Trees also know how to exclude unimportant features. There also a few split methods to choose from. Additionally, there are no assumptions about linear boundaries and the relationships between the independent and dependent variables. Although training the data can be slow for a Decision Tree, making predictions is usually faster compared to Logistic Regression. Also, Decision Trees are still very good with small datasets, whereas Logistic Regression might not be as good. Some cons are that in general, they are prone to overfitting. So if accuracy is more important, Logistic Regression might be the better option. Decision Trees can also be sensitive to outliers.
+
+Overall while both algorithms would fit this dataset, I would recommend trying Logistic Regression first. Logistic Regression is specifically meant for a binary categorical target variable which is exactly our scenario. Additionally, Logistic Regression is fairly easy to interpret, which should be considered as part of the business goal. Also, the fact that Logistic Regression can indicate the impact of each predictor, and give good predictive accuracy is a huge plus from a business perspective. Being able to pinpoint the best marketing scenarios is crucial for figuring out where marketing is effective, and which areas could use more work.
+
+#### 5 Data Cleansing for Logistic Regression
+
+Although many of the Logistic Regression assumption checks are made after the model is created with the training data, there are cleaning steps required to create appropriate training and test sets.
+
+##### 5.1 Convert Categorical Variable to Factor
+
+To use the Logistic Regression algorithm, let's convert categorical variables to `factor` data type which can be used by `glm`: 
+
+```{r}
+# Convert categorical to factor since glm can use factors
+data_raw_clean <- data_raw
+data_raw_clean$job <- as.factor(data_raw_clean$job)
+data_raw_clean$marital <- as.factor(data_raw_clean$marital)
+data_raw_clean$education <- as.factor(data_raw_clean$education)
+data_raw_clean$default <- as.factor(data_raw_clean$default)
+data_raw_clean$housing <- as.factor(data_raw_clean$housing)
+data_raw_clean$loan <- as.factor(data_raw_clean$loan)
+data_raw_clean$contact <- as.factor(data_raw_clean$contact)
+data_raw_clean$month <- as.factor(data_raw_clean$month)
+data_raw_clean$day_of_week <- as.factor(data_raw_clean$day_of_week)
+data_raw_clean$poutcome <- as.factor(data_raw_clean$poutcome)
+data_raw_clean$y <- as.factor(data_raw_clean$y)
+```
+
+##### 5.2 Remove Variables
+
+Since over 96% of `pdays` is inapplicable, let's treat this as NA data which should just be removed to simplify the model. Having too much data can be harmful as it hurts efficiency.
+
+Additionally, as the dataset suggests, `duration` should be discarded if the intention is to have a realistic predictive model, so let's remove that as well.
+
+```{r}
+# Remove variable pdays (96% inapplicable) and duration
+data_raw_clean2 <- data_raw_clean |>
+  dplyr::select(-c(pdays, duration))
+```
+
+Address Multicollinearity:
+
+Since there can not be any highly correlated variables for Logistic Regression, let's remove the ones we found in EDA which have correlations > 0.4. Let's remove `euribor3m`, `emp_var_rate`, and `nr_employed`. This will also help reduce the amount of data in the model.
+
+```{r}
+# Remove `euribor3m`, `emp_var_rate`, and `nr_employed` (absolute value correlations > 0.4)
+data_raw_clean3 <- data_raw_clean2 |>
+  dplyr::select(-c(euribor3m, emp_var_rate, nr_employed))
+```
+
+
+##### 5.3 Feature Engineering
+
+Although I combined variables in the dataset `data_raw_combined` for EDA, I would probably start out my model with just `data_raw_clean3`. After creating the model, I would then test `data_raw_combined` (after applying the same changes I made to `data_raw_clean3` above) to see if it would improve the model's performance.
+
+##### 5.4 Split Data for Validation
+
+To ensure objective model evaluation and prevent overfitting, let's split each dataset into training (80%) and testing (20%) sets.
+
+```{r}
+# Split data into train and test
+set.seed(123)
+split <- initial_split(data_raw_clean3, prop = 0.8, strata = y)
+train <- split |>
+         training()
+test <- split |>
+        testing()
+```
+
+##### 5.5 Standardization
+
+Standardization could be helpful in simple Logistic Regression, but it is not necessary. Since there is a difference in spreads among my predictors (as shown in the EDA), standardizing the data might be useful. This would be especially important if I ever decided to use regularization.
+
+```{r}
+# Standardize the training and test sets (using training standardization)
+set.seed(123)
+preproc_params <- preProcess(train, method = c("center", "scale"))
+
+# Apply standardization from the train set
+train_standardized <- predict(preproc_params, train)
+test_standardized <- predict(preproc_params, test)
+```
+
+##### 5.6 Address Imbalanced Dataset
+
+As the EDA showed, this dataset is heavily imbalanced which can cause bias. To resolve this, let's use SMOTE (Synthetic Minority Over-sampling Technique):
+
+```{r}
+set.seed(123)
+# Only apply SMOTE to training set
+smoted_train_standardized <- smotenc(train_standardized, var = "y", over_ratio = 1)
+
+# Distribution of target variable
+smoted_train_standardized |>
+  dplyr::select(y) |>
+  ggplot() + 
+  aes(x = y) + 
+  geom_histogram(bins= 40,fill = "blue", color = "black", stat="count") + 
+  labs(title = "Distribution of y", y = "Count") +  
+  theme_minimal()
+```
+
+We can now see that the distribution is even for our target variable, `y`.
+
+The final training set to be used in a Logistic Regression model is `smoted_train_standardized` and the test set is `test_standardized`.
+
+#### Conclusion
+
+This assignment went through how I would approach EDA and Data Preparation to train a Logistic Regression model for the Bank Narketing dataset. The EDA gave a glimpse as to which variables are important. When training the model, there's a chance I would need to make multiple adjustments to the data, depending on how the Logistic Regression model performed. Some assumption checks I would have to perform after model creation would be:
+
+* Linearity of predictors and log-odds
+* Multicollinearity (Variance Inflation Factor (VIF))
+* Influential outliers using Cook's distance and standardized residuals
+* Residuals check for independent observations
+
+So for example, if VIF showed variables with a value of > 5, I would mostly likely need to remove them and train the model again. Similarly, if some variables did not meet the log-odds test, I would might have to perform a transformation on the variable.
+
+Logistic Regression is a great, easy to understand predictive model that can also show important variables, which is extremely helpful for a marketing team.
