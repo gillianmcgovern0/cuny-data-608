@@ -1,0 +1,622 @@
+---
+title: "DATA 608 Story 4"
+author: "Gillian McGovern"
+date: "2025-11-05"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+
+## Overview
+
+I have introduced the term "Data Practitioner" as a generic job descriptor because we have so many different job role titles for individuals whose work activities overlap including Data Scientist, Data Engineer, Data Analyst, Business Analyst, Data Architect, etc.
+
+For this story we will answer the question, "How much do we get paid?" Your analysis and data visualizations must address the variation in average salary based on role descriptor and state.
+
+Notes:
+
+You will need to identify reliable sources for salary data and assemble the data sets that you will need.
+
+Your visualization(s) must show the most salient information (variation in average salary by role and by state).
+
+For this Story you must use a code library and code that you have written in R, Python or Java Script (additional coding in other languages is allowed).
+
+Post generation enhancements to you generated visualization will be allowed (e.g. Addition of kickers and labels).
+
+This assignment is due at the end of the week eight of the semester.
+
+## Data Sources
+
+To use a reliable source for the data, I chose to use data from the U.S. Bureau of Labor Statistics, specifically Occupational Employment and Wage Statistics (OEWS):
+
+https://data.bls.gov/oes/#/occGeo/One%20occupation%20for%20multiple%20geographical%20areas
+
+OEWS doesn't have data for every single data-related job title, but they do have enough for the assignment. The occupation outlook handbook was used to find the official similar job titles to "Data Scientists" (note, I chose not to include Financial Analysts):
+
+https://www.bls.gov/ooh/math/data-scientists.htm#tab-1
+
+## Load Libraries
+
+```{r}
+
+#Libraries
+library(knitr)
+library(readr)
+library(tidyverse)
+library(corrplot)
+library(dplyr)
+library(GGally)
+library(caret)
+library(pROC)
+library(glmnet)
+library(MASS)
+library(car)
+library(correlationfunnel)
+library(faraway)
+library(arm)
+library(performance)
+library(see)
+library(reshape2)
+library(readr)
+library(tidymodels)
+library(rms)
+library(statebins)
+library(tidyverse)
+library(httr)
+library(dplyr)
+library(stringr)
+library(rvest)
+library(janitor)
+library(stringr)
+library(tidytext)
+library(tibble)
+library(textdata)
+library(tidyr)
+library(readr)
+library(purrr)
+library(forcats)
+library(ggplot2)
+library(colorspace)
+```
+
+## Read in Data
+
+```{r}
+# Read in the data
+all_ocupations <- read.csv("https://raw.githubusercontent.com/gillianmcgovern0/cuny-data-608/refs/heads/main/OES_Report%20(6).csv")
+data_scientists <- read.csv("https://raw.githubusercontent.com/gillianmcgovern0/cuny-data-608/refs/heads/main/OES_Report%20(7).csv")
+survery_researchers <- read.csv("https://raw.githubusercontent.com/gillianmcgovern0/cuny-data-608/refs/heads/main/OES_Report%20(16).csv")
+operations_research_analysts <- read.csv("https://raw.githubusercontent.com/gillianmcgovern0/cuny-data-608/refs/heads/main/OES_Report%20(15).csv")
+information_security_analysts <- read.csv("https://raw.githubusercontent.com/gillianmcgovern0/cuny-data-608/refs/heads/main/OES_Report%20(14).csv")
+computer_systems_analysts <- read.csv("https://raw.githubusercontent.com/gillianmcgovern0/cuny-data-608/refs/heads/main/OES_Report%20(13).csv")
+market_research_analysts_marketing_specialists <- read.csv("https://raw.githubusercontent.com/gillianmcgovern0/cuny-data-608/refs/heads/main/OES_Report%20(12).csv")
+management_analysts <- read.csv("https://raw.githubusercontent.com/gillianmcgovern0/cuny-data-608/refs/heads/main/OES_Report%20(11).csv")
+statisticians <- read.csv("https://raw.githubusercontent.com/gillianmcgovern0/cuny-data-608/refs/heads/main/OES_Report%20(10).csv")
+database_architects <- read.csv("https://raw.githubusercontent.com/gillianmcgovern0/cuny-data-608/refs/heads/main/OES_Report%20(9).csv")
+database_administrators <- read.csv("https://raw.githubusercontent.com/gillianmcgovern0/cuny-data-608/refs/heads/main/OES_Report%20(8).csv")
+```
+
+## Clean the Data
+
+```{r}
+# Cleaning up datasets
+data_scientists_v1 <- data_scientists
+colnames(data_scientists_v1) <- data_scientists_v1[5,]
+data_scientists_v1 <- data_scientists_v1[, c(1,2,5)]
+data_scientists_v1 <- data_scientists_v1[-c(1:5), ]
+colnames(data_scientists_v1) <- c("state", "employment", "annual_mean_wage")
+data_scientists_v1$state <- sub("\\(.*", "", data_scientists_v1$state)
+data_scientists_v1$employment <- sub("\\(.*", "", data_scientists_v1$employment)
+data_scientists_v1$employment <- gsub(",", "", data_scientists_v1$employment)
+data_scientists_v1$annual_mean_wage <- gsub(",", "", data_scientists_v1$annual_mean_wage)
+data_scientists_v1$annual_mean_wage <- sub("\\(.*", "", data_scientists_v1$annual_mean_wage)
+data_scientists_v1$annual_mean_wage <- sub("\\$", "", data_scientists_v1$annual_mean_wage)
+data_scientists_v1 <- data_scientists_v1[-c(53:65), ]
+
+data_scientists_v1$employment <- as.integer(as.character(data_scientists_v1$employment))
+data_scientists_v1$annual_mean_wage <- as.integer(as.character(data_scientists_v1$annual_mean_wage))
+data_scientists_v1$state <- tolower(data_scientists_v1$state)
+data_scientists_v1$state <- trimws(data_scientists_v1$state, which = "right")
+
+survery_researchers_v1 <- survery_researchers
+colnames(survery_researchers_v1) <- survery_researchers_v1[5,]
+survery_researchers_v1 <- survery_researchers_v1[, c(1,2,5)]
+survery_researchers_v1 <- survery_researchers_v1[-c(1:5), ]
+colnames(survery_researchers_v1) <- c("state", "employment", "annual_mean_wage")
+survery_researchers_v1$state <- sub("\\(.*", "", survery_researchers_v1$state)
+survery_researchers_v1$employment <- sub("\\(.*", "", survery_researchers_v1$employment)
+survery_researchers_v1$employment <- gsub(",", "", survery_researchers_v1$employment)
+survery_researchers_v1$annual_mean_wage <- gsub(",", "", survery_researchers_v1$annual_mean_wage)
+survery_researchers_v1$annual_mean_wage <- sub("\\(.*", "", survery_researchers_v1$annual_mean_wage)
+survery_researchers_v1$annual_mean_wage <- sub("\\$", "", survery_researchers_v1$annual_mean_wage)
+survery_researchers_v1 <- survery_researchers_v1[-c(53:65), ]
+
+survery_researchers_v1$employment <- as.integer(as.character(survery_researchers_v1$employment))
+survery_researchers_v1$annual_mean_wage <- as.integer(as.character(survery_researchers_v1$annual_mean_wage))
+survery_researchers_v1$state <- tolower(survery_researchers_v1$state)
+survery_researchers_v1$state <- trimws(survery_researchers_v1$state, which = "right")
+
+operations_research_analysts_v1 <- operations_research_analysts
+colnames(operations_research_analysts_v1) <- operations_research_analysts_v1[5,]
+operations_research_analysts_v1 <- operations_research_analysts_v1[, c(1,2,5)]
+operations_research_analysts_v1 <- operations_research_analysts_v1[-c(1:5), ]
+colnames(operations_research_analysts_v1) <- c("state", "employment", "annual_mean_wage")
+operations_research_analysts_v1$state <- sub("\\(.*", "", operations_research_analysts_v1$state)
+operations_research_analysts_v1$employment <- sub("\\(.*", "", operations_research_analysts_v1$employment)
+operations_research_analysts_v1$employment <- gsub(",", "", operations_research_analysts_v1$employment)
+operations_research_analysts_v1$annual_mean_wage <- gsub(",", "", operations_research_analysts_v1$annual_mean_wage)
+operations_research_analysts_v1$annual_mean_wage <- sub("\\(.*", "", operations_research_analysts_v1$annual_mean_wage)
+operations_research_analysts_v1$annual_mean_wage <- sub("\\$", "", operations_research_analysts_v1$annual_mean_wage)
+operations_research_analysts_v1 <- operations_research_analysts_v1[-c(53:65), ]
+
+operations_research_analysts_v1$employment <- as.integer(as.character(operations_research_analysts_v1$employment))
+operations_research_analysts_v1$annual_mean_wage <- as.integer(as.character(operations_research_analysts_v1$annual_mean_wage))
+operations_research_analysts_v1$state <- tolower(operations_research_analysts_v1$state)
+operations_research_analysts_v1$state <- trimws(operations_research_analysts_v1$state, which = "right")
+
+information_security_analysts_v1 <- information_security_analysts
+colnames(information_security_analysts_v1) <- information_security_analysts_v1[5,]
+information_security_analysts_v1 <- information_security_analysts_v1[, c(1,2,5)]
+information_security_analysts_v1 <- information_security_analysts_v1[-c(1:5), ]
+colnames(information_security_analysts_v1) <- c("state", "employment", "annual_mean_wage")
+information_security_analysts_v1$state <- sub("\\(.*", "", information_security_analysts_v1$state)
+information_security_analysts_v1$employment <- sub("\\(.*", "", information_security_analysts_v1$employment)
+information_security_analysts_v1$employment <- gsub(",", "", information_security_analysts_v1$employment)
+information_security_analysts_v1$annual_mean_wage <- gsub(",", "", information_security_analysts_v1$annual_mean_wage)
+information_security_analysts_v1$annual_mean_wage <- sub("\\(.*", "", information_security_analysts_v1$annual_mean_wage)
+information_security_analysts_v1$annual_mean_wage <- sub("\\$", "", information_security_analysts_v1$annual_mean_wage)
+information_security_analysts_v1 <- information_security_analysts_v1[-c(53:65), ]
+
+information_security_analysts_v1$employment <- as.integer(as.character(information_security_analysts_v1$employment))
+information_security_analysts_v1$annual_mean_wage <- as.integer(as.character(information_security_analysts_v1$annual_mean_wage))
+information_security_analysts_v1$state <- tolower(information_security_analysts_v1$state)
+information_security_analysts_v1$state <- trimws(information_security_analysts_v1$state, which = "right")
+
+computer_systems_analysts_v1 <- computer_systems_analysts
+colnames(computer_systems_analysts_v1) <- computer_systems_analysts_v1[5,]
+computer_systems_analysts_v1 <- computer_systems_analysts_v1[, c(1,2,5)]
+computer_systems_analysts_v1 <- computer_systems_analysts_v1[-c(1:5), ]
+colnames(computer_systems_analysts_v1) <- c("state", "employment", "annual_mean_wage")
+computer_systems_analysts_v1$state <- sub("\\(.*", "", computer_systems_analysts_v1$state)
+computer_systems_analysts_v1$employment <- sub("\\(.*", "", computer_systems_analysts_v1$employment)
+computer_systems_analysts_v1$employment <- gsub(",", "", computer_systems_analysts_v1$employment)
+computer_systems_analysts_v1$annual_mean_wage <- gsub(",", "", computer_systems_analysts_v1$annual_mean_wage)
+computer_systems_analysts_v1$annual_mean_wage <- sub("\\(.*", "", computer_systems_analysts_v1$annual_mean_wage)
+computer_systems_analysts_v1$annual_mean_wage <- sub("\\$", "", computer_systems_analysts_v1$annual_mean_wage)
+computer_systems_analysts_v1 <- computer_systems_analysts_v1[-c(53:65), ]
+
+computer_systems_analysts_v1$employment <- as.integer(as.character(computer_systems_analysts_v1$employment))
+computer_systems_analysts_v1$annual_mean_wage <- as.integer(as.character(computer_systems_analysts_v1$annual_mean_wage))
+computer_systems_analysts_v1$state <- tolower(computer_systems_analysts_v1$state)
+computer_systems_analysts_v1$state <- trimws(computer_systems_analysts_v1$state, which = "right")
+
+market_research_analysts_marketing_specialists_v1 <- market_research_analysts_marketing_specialists
+colnames(market_research_analysts_marketing_specialists_v1) <- market_research_analysts_marketing_specialists_v1[5,]
+market_research_analysts_marketing_specialists_v1 <- market_research_analysts_marketing_specialists_v1[, c(1,2,5)]
+market_research_analysts_marketing_specialists_v1 <- market_research_analysts_marketing_specialists_v1[-c(1:5), ]
+colnames(market_research_analysts_marketing_specialists_v1) <- c("state", "employment", "annual_mean_wage")
+market_research_analysts_marketing_specialists_v1$state <- sub("\\(.*", "", market_research_analysts_marketing_specialists_v1$state)
+market_research_analysts_marketing_specialists_v1$employment <- sub("\\(.*", "", market_research_analysts_marketing_specialists_v1$employment)
+market_research_analysts_marketing_specialists_v1$employment <- gsub(",", "", market_research_analysts_marketing_specialists_v1$employment)
+market_research_analysts_marketing_specialists_v1$annual_mean_wage <- gsub(",", "", market_research_analysts_marketing_specialists_v1$annual_mean_wage)
+market_research_analysts_marketing_specialists_v1$annual_mean_wage <- sub("\\(.*", "", market_research_analysts_marketing_specialists_v1$annual_mean_wage)
+market_research_analysts_marketing_specialists_v1$annual_mean_wage <- sub("\\$", "", market_research_analysts_marketing_specialists_v1$annual_mean_wage)
+market_research_analysts_marketing_specialists_v1 <- market_research_analysts_marketing_specialists_v1[-c(53:65), ]
+
+market_research_analysts_marketing_specialists_v1$employment <- as.integer(as.character(market_research_analysts_marketing_specialists_v1$employment))
+market_research_analysts_marketing_specialists_v1$annual_mean_wage <- as.integer(as.character(market_research_analysts_marketing_specialists_v1$annual_mean_wage))
+market_research_analysts_marketing_specialists_v1$state <- tolower(market_research_analysts_marketing_specialists_v1$state)
+market_research_analysts_marketing_specialists_v1$state <- trimws(market_research_analysts_marketing_specialists_v1$state, which = "right")
+
+management_analysts_v1 <- management_analysts
+colnames(management_analysts_v1) <- management_analysts_v1[5,]
+management_analysts_v1 <- management_analysts_v1[, c(1,2,5)]
+management_analysts_v1 <- management_analysts_v1[-c(1:5), ]
+colnames(management_analysts_v1) <- c("state", "employment", "annual_mean_wage")
+management_analysts_v1$state <- sub("\\(.*", "", management_analysts_v1$state)
+management_analysts_v1$employment <- sub("\\(.*", "", management_analysts_v1$employment)
+management_analysts_v1$employment <- gsub(",", "", management_analysts_v1$employment)
+management_analysts_v1$annual_mean_wage <- gsub(",", "", management_analysts_v1$annual_mean_wage)
+management_analysts_v1$annual_mean_wage <- sub("\\(.*", "", management_analysts_v1$annual_mean_wage)
+management_analysts_v1$annual_mean_wage <- sub("\\$", "", management_analysts_v1$annual_mean_wage)
+management_analysts_v1 <- management_analysts_v1[-c(53:65), ]
+
+management_analysts_v1$employment <- as.integer(as.character(management_analysts_v1$employment))
+management_analysts_v1$annual_mean_wage <- as.integer(as.character(management_analysts_v1$annual_mean_wage))
+management_analysts_v1$state <- tolower(management_analysts_v1$state)
+management_analysts_v1$state <- trimws(management_analysts_v1$state, which = "right")
+
+statisticians_v1 <- statisticians
+colnames(statisticians_v1) <- statisticians_v1[5,]
+statisticians_v1 <- statisticians_v1[, c(1,2,5)]
+statisticians_v1 <- statisticians_v1[-c(1:5), ]
+colnames(statisticians_v1) <- c("state", "employment", "annual_mean_wage")
+statisticians_v1$state <- sub("\\(.*", "", statisticians_v1$state)
+statisticians_v1$employment <- sub("\\(.*", "", statisticians_v1$employment)
+statisticians_v1$employment <- gsub(",", "", statisticians_v1$employment)
+statisticians_v1$annual_mean_wage <- gsub(",", "", statisticians_v1$annual_mean_wage)
+statisticians_v1$annual_mean_wage <- sub("\\(.*", "", statisticians_v1$annual_mean_wage)
+statisticians_v1$annual_mean_wage <- sub("\\$", "", statisticians_v1$annual_mean_wage)
+statisticians_v1 <- statisticians_v1[-c(53:65), ]
+
+statisticians_v1$employment <- as.integer(as.character(statisticians_v1$employment))
+statisticians_v1$annual_mean_wage <- as.integer(as.character(statisticians_v1$annual_mean_wage))
+statisticians_v1$state <- tolower(statisticians_v1$state)
+statisticians_v1$state <- trimws(statisticians_v1$state, which = "right")
+
+database_architects_v1 <- database_architects
+colnames(database_architects_v1) <- database_architects_v1[5,]
+database_architects_v1 <- database_architects_v1[, c(1,2,5)]
+database_architects_v1 <- database_architects_v1[-c(1:5), ]
+colnames(database_architects_v1) <- c("state", "employment", "annual_mean_wage")
+database_architects_v1$state <- sub("\\(.*", "", database_architects_v1$state)
+database_architects_v1$employment <- sub("\\(.*", "", database_architects_v1$employment)
+database_architects_v1$employment <- gsub(",", "", database_architects_v1$employment)
+database_architects_v1$annual_mean_wage <- gsub(",", "", database_architects_v1$annual_mean_wage)
+database_architects_v1$annual_mean_wage <- sub("\\(.*", "", database_architects_v1$annual_mean_wage)
+database_architects_v1$annual_mean_wage <- sub("\\$", "", database_architects_v1$annual_mean_wage)
+database_architects_v1 <- database_architects_v1[-c(53:65), ]
+
+database_architects_v1$employment <- as.integer(as.character(database_architects_v1$employment))
+database_architects_v1$annual_mean_wage <- as.integer(as.character(database_architects_v1$annual_mean_wage))
+database_architects_v1$state <- tolower(database_architects_v1$state)
+database_architects_v1$state <- trimws(database_architects_v1$state, which = "right")
+
+database_administrators_v1 <- database_administrators
+colnames(database_administrators_v1) <- database_administrators_v1[5,]
+database_administrators_v1 <- database_administrators_v1[, c(1,2,5)]
+database_administrators_v1 <- database_administrators_v1[-c(1:5), ]
+colnames(database_administrators_v1) <- c("state", "employment", "annual_mean_wage")
+database_administrators_v1$state <- sub("\\(.*", "", database_administrators_v1$state)
+database_administrators_v1$employment <- sub("\\(.*", "", database_administrators_v1$employment)
+database_administrators_v1$employment <- gsub(",", "", database_administrators_v1$employment)
+database_administrators_v1$annual_mean_wage <- gsub(",", "", database_administrators_v1$annual_mean_wage)
+database_administrators_v1$annual_mean_wage <- sub("\\(.*", "", database_administrators_v1$annual_mean_wage)
+database_administrators_v1$annual_mean_wage <- sub("\\$", "", database_administrators_v1$annual_mean_wage)
+database_administrators_v1 <- database_administrators_v1[-c(53:65), ]
+
+database_administrators_v1$employment <- as.integer(as.character(database_administrators_v1$employment))
+database_administrators_v1$annual_mean_wage <- as.integer(as.character(database_administrators_v1$annual_mean_wage))
+database_administrators_v1$state <- tolower(database_administrators_v1$state)
+database_administrators_v1$state <- trimws(database_administrators_v1$state, which = "right")
+```
+
+
+```{r}
+# Create employment bins for simplification
+
+data_scientists_v1_bins <- mutate(
+  data_scientists_v1,
+  employment_bins = cut(
+      employment,
+      breaks = c(0, 500, 2000, 5000, 35000),
+      labels = c("< 500", "500 to 2000", "2000 to 5000", "5000 to 35000"),
+      right = FALSE
+    )
+  )
+
+survery_researchers_v1_bins <- mutate(
+  survery_researchers_v1,
+  employment_bins = cut(
+      employment,
+      breaks = c(0, 500, 2000, 5000, 35000),
+      labels = c("< 500", "500 to 2000", "2000 to 5000", "5000 to 35000"),
+      right = FALSE
+    )
+  )
+
+operations_research_analysts_v1_bins <- mutate(
+  operations_research_analysts_v1,
+  employment_bins = cut(
+      employment,
+      breaks = c(0, 500, 2000, 5000, 35000),
+      labels = c("< 500", "500 to 2000", "2000 to 5000", "5000 to 35000"),
+      right = FALSE
+    )
+  )
+
+information_security_analysts_v1_bins <- mutate(
+  information_security_analysts_v1,
+  employment_bins = cut(
+      employment,
+      breaks = c(0, 500, 2000, 5000, 35000),
+      labels = c("< 500", "500 to 2000", "2000 to 5000", "5000 to 35000"),
+      right = FALSE
+    )
+  )
+
+computer_systems_analysts_v1_bins <- mutate(
+  computer_systems_analysts_v1,
+  employment_bins = cut(
+      employment,
+      breaks = c(0, 500, 2000, 5000, 35000),
+      labels = c("< 500", "500 to 2000", "2000 to 5000", "5000 to 35000"),
+      right = FALSE
+    )
+  )
+
+market_research_analysts_marketing_specialists_v1_bins <- mutate(
+  market_research_analysts_marketing_specialists_v1,
+  employment_bins = cut(
+      employment,
+      breaks = c(0, 500, 2000, 5000, 35000),
+      labels = c("< 500", "500 to 2000", "2000 to 5000", "5000 to 35000"),
+      right = FALSE
+    )
+  )
+
+management_analysts_v1_bins <- mutate(
+  management_analysts_v1,
+  employment_bins = cut(
+      employment,
+      breaks = c(0, 500, 2000, 5000, 35000),
+      labels = c("< 500", "500 to 2000", "2000 to 5000", "5000 to 35000"),
+      right = FALSE
+    )
+  )
+
+statisticians_v1_bins <- mutate(
+  statisticians_v1,
+  employment_bins = cut(
+      employment,
+      breaks = c(0, 500, 2000, 5000, 35000),
+      labels = c("< 500", "500 to 2000", "2000 to 5000", "5000 to 35000"),
+      right = FALSE
+    )
+  )
+
+database_architects_v1_bins <- mutate(
+  database_architects_v1,
+  employment_bins = cut(
+      employment,
+      breaks = c(0, 500, 2000, 5000, 35000),
+      labels = c("< 500", "500 to 2000", "2000 to 5000", "5000 to 35000"),
+      right = FALSE
+    )
+  )
+
+database_administrators_v1_bins <- mutate(
+  database_administrators_v1,
+  employment_bins = cut(
+      employment,
+      breaks = c(0, 500, 2000, 5000, 35000),
+      labels = c("< 500", "500 to 2000", "2000 to 5000", "5000 to 35000"),
+      right = FALSE
+    )
+  )
+```
+
+```{r}
+# Add job title
+survery_researchers_v1_bins$job_title <- "Survey Researchers"
+data_scientists_v1_bins$job_title <- "Data Scientists"
+operations_research_analysts_v1_bins$job_title <- "Operations Research Analysts"
+information_security_analysts_v1_bins$job_title <- "Information Security Analysts"
+computer_systems_analysts_v1_bins$job_title <- "Computer Systems Analysts"
+market_research_analysts_marketing_specialists_v1_bins$job_title <- "Market Research Analysts and Marketing Specialists"
+management_analysts_v1_bins$job_title <- "Management Analysts"
+statisticians_v1_bins$job_title <- "Statisticians"
+database_architects_v1_bins$job_title <- "Database Architects"
+database_administrators_v1_bins$job_title <- "Database Administrators"
+```
+
+```{r}
+# Merge the datasets
+merged_df <- rbind(survery_researchers_v1_bins, data_scientists_v1_bins, operations_research_analysts_v1_bins, information_security_analysts_v1_bins, computer_systems_analysts_v1_bins, market_research_analysts_marketing_specialists_v1_bins, management_analysts_v1_bins, statisticians_v1_bins, database_architects_v1_bins, database_administrators_v1_bins)
+```
+
+```{r}
+# set up for geam_statebins
+state_names <- c("Alabama", "Alaska", "Arizona", "Arkansas", "California", "Colorado", "Connecticut", "Delaware", "Florida", "Georgia", "Hawaii", "Idaho", "Illinois", "Indiana", "Iowa", "Kansas", "Kentucky", "Louisiana", "Maine", "Maryland", "Massachusetts", "Michigan", "Minnesota", "Mississippi", "Missouri", "Montana", "Nebraska", "Nevada", "New Hampshire", "New Jersey", "New Mexico", "New York", "North Carolina", "North Dakota", "Ohio", "Oklahoma", "Oregon", "Pennsylvania", "Rhode Island", "South Carolina", "South Dakota", "Tennessee", "Texas", "Utah", "Vermont", "Virginia", "Washington", "West Virginia", "Wisconsin", "Wyoming")
+
+merged_df_filtered <- merged_df %>%
+  filter(state %in% tolower(state_names))
+```
+
+## Which States in the US are Employers Hiring Data-Related Roles
+
+```{r, fig.width=10, fig.height=20, warning=FALSE}
+
+merged_df_filtered$state <- str_to_title(merged_df_filtered$state)
+
+p <- filter(merged_df_filtered) %>%
+  ggplot(aes(state = state, fill = employment_bins)) +
+  geom_statebins(lbl_size = 14/.pt) +
+  expand_limits(x = -1.3) + # make space for legend
+  coord_equal(expand = FALSE) +
+   scale_fill_discrete_sequential(
+    h1 = 50, h2 = 140, c1 = 30, cmax = 40, c2 = 0,
+    l1 = 20, l2 = 100, p1 = 1, p2 = 1.2, rev = TRUE,
+    name = "Employment",
+    nmax = 7,
+    order = 2:6,
+    guide = guide_legend(
+      override.aes = list(colour = "white", size = 1),
+      reverse = TRUE
+    )
+  ) +
+  theme(
+    panel.grid.major = element_blank(), # Removes grid lines
+    panel.grid.minor = element_blank(),
+    panel.border = element_blank(),
+    panel.background = element_blank(),
+    axis.title.x = element_blank(), # Remove x-axis title
+    axis.text.x = element_blank(),  # Remove x-axis text (labels)
+    axis.title.y = element_blank(), # Remove y-axis title
+    axis.text.y = element_blank(),   # Remove y-axis text (labels)
+    axis.ticks.x = element_blank(), # Remove x-axis tick marks
+    axis.ticks.y = element_blank(),  # Remove y-axis tick marks
+    legend.position = "bottom"
+    # legend.background = element_blank(),
+    # legend.position = c(0, 1),
+    # legend.justification = c(0, 1),
+    # legend.spacing.x = grid::unit(2, "pt"),
+    # legend.spacing.y = grid::unit(2, "pt"),
+    # legend.title = element_text(hjust = 0.5),
+    # legend.key.width = grid::unit(18, "pt"),
+    # legend.key.height = grid::unit(15, "pt")
+  ) +
+  labs(
+    title = "Data-Related Employment in the United States, by Job Title (May 2024)",
+    subtitle = "Computer Systems Analysts, Data Scientists, Market Research Analysts, and Management Analysts are the most\ndesirable data-related job titles.",
+    caption = "Data from the Occupational Employment and Wage Statistics (U.S. Bureau of Labor Statistics). Blank states indicate data not available."
+    )
+
+p + facet_wrap(vars(job_title), ncol = 2)
+```
+
+Fig. 1 shows us Computer Systems Analysts, Data Scientists, Market Research Analysts, and Management Analysts are the most employable data-related job titles in the United States. The mid-west and the coasts seem to be hiring the most.
+
+## Average Annual Wage in the US for All Occupations
+
+```{r, fig.width=10, fig.height=10}
+# Average annual mean wage across all occupations by state
+all_ocupations_v1 <- all_ocupations
+colnames(all_ocupations_v1) <- all_ocupations_v1[5,]
+all_ocupations_v1 <- all_ocupations_v1[, c(1,2)]
+all_ocupations_v1 <- all_ocupations_v1[-c(1:5), ]
+colnames(all_ocupations_v1) <- c("state", "annual_mean_wage")
+all_ocupations_v1$state <- sub("\\(.*", "", all_ocupations_v1$state)
+
+all_ocupations_v1$annual_mean_wage <- gsub(",", "", all_ocupations_v1$annual_mean_wage)
+all_ocupations_v1$annual_mean_wage <- sub("\\(.*", "", all_ocupations_v1$annual_mean_wage)
+all_ocupations_v1$annual_mean_wage <- sub("\\$", "", all_ocupations_v1$annual_mean_wage)
+all_ocupations_v1 <- all_ocupations_v1[-c(53:65), ]
+
+all_ocupations_v1$annual_mean_wage <- as.integer(as.character(all_ocupations_v1$annual_mean_wage))
+# all_ocupations_v1$state <- tolower(all_ocupations_v1$state)
+all_ocupations_v1$state <- trimws(all_ocupations_v1$state, which = "right")
+
+# Find the top 10 states
+all_ocupations_v1_sorted <- all_ocupations_v1 |>
+  arrange(desc(annual_mean_wage))
+all_ocupations_v1_sorted_sliced <- all_ocupations_v1_sorted |>
+  slice(1:10)
+all_ocupations_v1_sorted_sliced_vector <- all_ocupations_v1_sorted_sliced[["state"]]
+all_ocupations_v1_sorted <- all_ocupations_v1_sorted %>%
+  mutate(is_top_10 = (state %in% all_ocupations_v1_sorted_sliced_vector))
+
+# Plot
+ggplot(all_ocupations_v1_sorted, aes(x = reorder(state, annual_mean_wage), y = annual_mean_wage, fill = is_top_10)) + 
+  geom_bar(stat = "identity") +
+  scale_fill_manual(values = c("TRUE" = "darkolivegreen", "FALSE" = lighten("darkolivegreen", 0.6))) +
+  scale_y_continuous(
+    name = "Annual Mean Wage (in US Dollars)",
+  ) +
+  coord_flip() + 
+  theme(
+    text = element_text(color = "gray30"),
+    axis.text.x = element_text(color = "gray30"),
+    axis.title.y = element_blank(),
+    axis.line.y = element_blank(),
+    axis.ticks.length = unit(0, "pt"),
+    axis.text.y = element_text(
+      size = 8,
+    ),
+  ) +
+  labs(
+    title = "Annual Mean Wage for All Occupations in the United States, by State (May 2024)",
+    subtitle = "D.C., Mass., Washington, New York, California, New Jersey, Maryland, Connecticut, Colorado and Alaska are the top 10 \nstates with the highest annual mean wage.",
+    caption = "Data from the Occupational Employment and Wage Statistics (U.S. Bureau of Labor Statistics)."
+    ) +
+  theme(legend.position = "none")
+```
+
+Fig. 2 shows that Washington D.C., Mass., Washington, New York, California, New Jersey, Maryland, Connecticut, Colorado and Alaska are the top 10 states with the highest annual mean wage. D.C. beats the other states by quite a lot as it is the only location where the average annual wage is great than $90,000.
+
+## Average Annual Wage for All Data-Related Job Titles
+
+```{r}
+# Average annual wage for each job title
+merged_df_filtered_avge_wage_title <- merged_df_filtered %>%
+  dplyr::select(job_title, annual_mean_wage) %>%
+  group_by(job_title) %>%
+  summarise(mean_wage = mean(annual_mean_wage, na.rm = TRUE))
+
+
+ggplot(merged_df_filtered_avge_wage_title, aes(x = reorder(job_title, mean_wage), y = mean_wage)) + 
+  geom_col(fill = lighten("darkolivegreen", 0.2)) + 
+  scale_y_continuous(
+    name = "Mean Annual Wage (in US Dollars)",
+  ) +
+  geom_text(aes(label = paste("$", prettyNum(round(mean_wage), big.mark = ","))),
+            color = "white",
+            size = 3.6,
+            hjust = 1.3) +
+  coord_flip() + 
+  theme(
+    text = element_text(color = "gray30"),
+    axis.text.x = element_text(color = "gray30"),
+    axis.title.y = element_blank(),
+    axis.line.y = element_blank(),
+    axis.ticks.length = unit(0, "pt"),
+    axis.text.y = element_text(
+      size = 8,
+    ),
+  ) +
+  labs(title = "Mean Annual Wage for All Data-Related Job Titles\nin the United States, by Job Title (May 2024)",
+       subtitle = "Database Architects, Information Security Analysts,\nand Data Scientists are the top paid positions.",
+       caption = "Data from the Occupational Employment and Wage Statistics (U.S. Bureau of Labor Statistics).")
+```
+
+Fig. 3 shows that Database Architects, Information Security Analysts, and Data Scientists are the top paid data-related positions in the US. 50% of the data-related positions shown have an annual average wage above $100,000.
+
+## Average Annual Wage in the US for All Occupations
+
+```{r, fig.width=10, fig.height=30, warning=FALSE}
+# Avge Wage by Job and by State - CONCLUSION VISUAL
+merged_df_filtered_copy <- merged_df_filtered
+
+# Find the top 5 states by job title
+merged_df_filtered_copy_sorted <- merged_df_filtered_copy %>%
+  group_by(job_title) %>%
+  arrange(desc(annual_mean_wage))
+merged_df_filtered_copy_sorted_sliced <- merged_df_filtered_copy_sorted %>%
+  group_by(job_title) %>%
+  mutate(row_id = row_number()) %>%
+  mutate(is_top_5 = row_id <= 5) %>%
+  ungroup() %>%
+  dplyr::select(-row_id)
+
+# sort states alphabetically
+merged_df_filtered_copy_sorted_sliced <- merged_df_filtered_copy_sorted_sliced %>%
+  mutate(state = factor(state, levels = sort(unique(state))))
+    
+p2 <- ggplot(merged_df_filtered_copy_sorted_sliced, aes(x = state, y = annual_mean_wage, fill = is_top_5)) + 
+  geom_bar(stat = "identity") +
+  geom_text(aes(label = ifelse(is_top_5 == TRUE, paste("$", prettyNum(annual_mean_wage, big.mark = ",")), "")),
+            color = "black",
+            size = 3,
+            hjust = -0.1) +
+  scale_fill_manual(values = c("TRUE" = "darkolivegreen", "FALSE" = lighten("darkolivegreen", 0.5))) + 
+  scale_y_continuous(
+    name = "Annual Mean Wage (in US Dollars)",
+    limits = c(0, 190000)
+  ) +
+  coord_flip() + 
+  theme(
+    text = element_text(color = "gray30"),
+    axis.text.x = element_text(color = "gray30"),
+    axis.title.y = element_blank(),
+    axis.line.y = element_blank(),
+    axis.ticks.length = unit(0, "pt"),
+    axis.text.y = element_text(
+      size = 8,
+    ),
+  ) +
+  labs(
+    title = "Annual Mean Wage for Data-Related Job Titles in the United States, by Role and by State (May 2024)",
+    subtitle = "Highest annual mean wage varies by state for each job title (highlighted bars indicate states in the job title's top 5 highest annual wage).",
+    caption = "Data from the Occupational Employment and Wage Statistics (U.S. Bureau of Labor Statistics). Blank states indicate data not available."
+    ) +
+  theme(legend.position = "none")
+
+p2 + facet_wrap(vars(job_title), ncol = 2)
+```
+
+Fig. 4 shows the highest annual mean wage varies by state for each job title (a more precise outlook on the data). Each graph is unique. For example, if you would like to be a Data Scientist and you're looking to maximize your salary, Washington is the best location. Washington is in many of the top 5 locations for salary. Yet, for Database Architects, California has the highest salary. Additionally, Survey Researchers has the least data available. A lot of the top locations match the Fig. 2's results for showing the state's with the highest average annual wage.
+
+We can also compare overall salaries in this graph. For example, Database Administrators get paid less than Database Architects, which we also saw in Fig. 3.
