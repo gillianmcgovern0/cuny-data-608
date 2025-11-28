@@ -1,0 +1,38 @@
+"Characteristics of SNAP recipients, 2023"
+% of food stamp recipients
+
+,Share,Among ...,Category
+Ages 0-5,11.8%,All recipients,Age
+6-11,11.7%,All recipients,Age
+12-14,5.6%,All recipients,Age
+15-17,6.0%,All recipients,Age
+18-24,7.0%,All recipients,Age
+25-44,22.8%,All recipients,Age
+45-64,20.2%,All recipients,Age
+65 and older,15.0%,All recipients,Age
+White,61.1%,All recipients,Race/ethnicity
+"(White, not Hispanic)",37.4%,All recipients,Race/ethnicity
+Black,28.7%,All recipients,Race/ethnicity
+Asian,3.5%,All recipients,Race/ethnicity
+All other races or race combinations,6.7%,All recipients,Race/ethnicity
+Hispanic (any race),30.0%,All recipients,Race/ethnicity
+U.S. born,86.6%,All recipients,Nativity
+Foreign born,13.4%,All recipients,Nativity
+No high school diploma,18.8%,Adults,Education
+High school diploma or GED,35.3%,Adults,Education
+"Some college, no degree",17.4%,Adults,Education
+Associate degree,7.6%,Adults,Education
+Bachelor's degree or higher,10.2%,Adults,Education
+Employed in all months,26.8%,Adults,Employment
+Employed in some months,12.2%,Adults,Employment
+Not employed in any month,61.0%,Adults,Employment
+2 parents,47.4%,Children,Family structure (two parents)
+(2 married parents),35.0%,Children,Family structure (two parents)
+Mother only,43.7%,Children,Family structure (one parent)
+Father only,4.7%,Children,Family structure (one parent)
+No parent,4.2%,Children,Family structure (no parent)
+(Grandparent household),3.2%,Children,Family structure (no parent)
+
+Note: Shares may not sum to 100% due to rounding. Survey asked for recipients' age and (for children) living arrangements as of December 2023.
+"Source: U.S. Census Bureau, 2024 Survey of Income and Program Participation."
+PEW RESEARCH CENTER
