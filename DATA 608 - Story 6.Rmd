@@ -1,0 +1,979 @@
+---
+title: "DATA 608 - Story 6"
+author: "Gillian McGovern"
+date: "2025-11-23"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+# Overview
+
+The United Nations Food and Agriculture Organization publication, The State of Food Security and Nutrition in the World 2022 (https://www.fao.org/documents/card/en/c/cc0639en) might lead one to the conclusion that it's an elsewhere problem. That the people who are suffering malnutrition and starvation are "elsewhere", not in our backyard. For this assignment you will need to take a closer look here at home (the US)
+
+Notes:
+
+You will need to locate and source data that reflects food security and nutrition by state broken down by men, women, children and by age groups
+
+Your analysis should demonstrate correlations that exist between level of poverty and food insecurity, malnutrition and starvation.
+
+Your data and analysis should also indicate what happens to the children as they mature into adults. Will they become fully functional citizens or will they require continued support?
+
+You data visualizations need to tell the story for a political audience that you were lobbying to address the issue of food insecurity in the US
+
+This assignment is due at the end of the week twelve of the semester.
+
+# Data Sources
+
+I used many different sources for this story such as World Bank Open Data, US Economic Research Service, CDC, U.S. Bureau of Labor Statistics, US Census Bureau, and US Department of Health & Human Services.
+
+# Data Import
+
+```{r, message=FALSE, warning=FALSE}
+#Libraries
+library(geomtextpath)
+library(knitr)
+library(readr)
+library(tidyverse)
+library(corrplot)
+library(dplyr)
+library(GGally)
+library(caret)
+library(pROC)
+library(glmnet)
+library(MASS)
+library(car)
+library(faraway)
+library(arm)
+library(performance)
+library(see)
+library(reshape2)
+library(readr)
+library(tidymodels)
+library(rms)
+library(statebins)
+library(tidyverse)
+library(httr)
+library(dplyr)
+library(stringr)
+library(rvest)
+library(janitor)
+library(stringr)
+library(tidytext)
+library(tibble)
+library(textdata)
+library(tidyr)
+library(readr)
+library(purrr)
+library(forcats)
+library(ggplot2)
+library(colorspace)
+library(grid)
+library(ggnewscale)
+library(ggtext)
+library(tidyverse)
+library(shadowtext)
+library(patchwork)
+library(ggplot2)
+library(dplyr)
+library(plotly)
+```
+
+
+
+```{r}
+# Read in the data
+
+# To be used for ideal scenario 2022
+# world food insecurity from world bank open data
+world_food_insecurity <- read.csv("https://raw.githubusercontent.com/gillianmcgovern0/cuny-data-608/refs/heads/main/slide_1_world_food_insecurity_API_SN.ITK.MSFI.ZS_DS2_en_csv_v2_8593.csv", sep=",", skip=4)
+
+# FOOD INSECURITY
+# Food insecurity by state data from US Economic Research Service 2021–2023
+food_insecurity_by_state <- read.csv("https://github.com/gillianmcgovern0/cuny-data-608/raw/refs/heads/main/foodsecurity_state_2023.csv", encoding = "UTF-8", fileEncoding = "latin1")
+# Food insecurity by gender from  National Center for Health Statistics, National Health Interview Survey, 2021
+# Food insecurity by age group from  National Center for Health Statistics, National Health Interview Survey, 2021
+food_insecurity_by_gender_age <- read.csv("https://github.com/gillianmcgovern0/cuny-data-608/raw/refs/heads/main/2021_food_insecurity_gender_age_group.csv", fileEncoding = "latin1")
+# SNAP (food insecurity) by age group and gender (US Census Bureau)
+snap_food_insecurity_by_age_2023 <- read.csv("https://raw.githubusercontent.com/gillianmcgovern0/cuny-data-608/refs/heads/main/characteristics_of_snap_recipients%2C_2023_data_2025-11-14.csv", skip=3)
+
+
+# NUTRITION
+# nutrition (fruit metric) by state from CDC DNPAO https://dnpao-dtm.cdc.gov/?page=comparison
+nutri_by_state_2021 <- read.csv("https://raw.githubusercontent.com/gillianmcgovern0/cuny-data-608/refs/heads/main/CDC_DTM_data_Adults%20who%20consume%20fruit%20_%201%20time%20daily_2021.csv")
+nutri_by_state_veg_2021 <- read.csv("https://raw.githubusercontent.com/gillianmcgovern0/cuny-data-608/refs/heads/main/CDC_DTM_data_Adults%20who%20consume%20vegetables%20_%201%20time%20daily_2021.csv")
+# nutrition (obesity metric) by gender and age group
+nutri_by_gender_age_2018 <- read.csv("https://raw.githubusercontent.com/gillianmcgovern0/cuny-data-608/refs/heads/main/nutri_obesity_by_gender_age_group_2017-2018.csv")
+# nutrition (veg metric) by gender
+nutri_male_2021 <- read.csv("https://raw.githubusercontent.com/gillianmcgovern0/cuny-data-608/refs/heads/main/CDC_DTM_data_Adults%20who%20consume%20vegetables%20_%201%20time%20daily_2021_Sex_Male.csv")
+nutri_female_2021 <- read.csv("https://raw.githubusercontent.com/gillianmcgovern0/cuny-data-608/refs/heads/main/CDC_DTM_data_Adults%20who%20consume%20vegetables%20_%201%20time%20daily_2021_Sex_Female.csv")
+
+# nutrition (veg metric) by age group from CDC DNPAO https://dnpao-dtm.cdc.gov/?page=comparison
+nutri_children_2021 <- read.csv("https://raw.githubusercontent.com/gillianmcgovern0/cuny-data-608/refs/heads/main/CDC_DTM_data_Children%20who%20consume%20vegetables%20_%201%20time%20daily_2021-2022.csv")
+nutri_adolescents_2021 <- read.csv("https://raw.githubusercontent.com/gillianmcgovern0/cuny-data-608/refs/heads/main/CDC_DTM_data_Adolescents%20who%20consume%20vegetables%20_%201%20time%20daily_2021.csv")
+nutri_18_24_2021 <- read.csv("https://raw.githubusercontent.com/gillianmcgovern0/cuny-data-608/refs/heads/main/CDC_DTM_data_Adults%20who%20consume%20vegetables%20_%201%20time%20daily_2021_Age%20(years)_18%20-%2024.csv")
+nutri_25_34_2021 <- read.csv("https://raw.githubusercontent.com/gillianmcgovern0/cuny-data-608/refs/heads/main/CDC_DTM_data_Adults%20who%20consume%20vegetables%20_%201%20time%20daily_2021_Age%20(years)_25%20-%2034.csv")
+nutri_35_44_2021 <- read.csv("https://raw.githubusercontent.com/gillianmcgovern0/cuny-data-608/refs/heads/main/CDC_DTM_data_Adults%20who%20consume%20vegetables%20_%201%20time%20daily_2021_Age%20(years)_35%20-%2044.csv")
+nutri_45_54_2021 <- read.csv("https://raw.githubusercontent.com/gillianmcgovern0/cuny-data-608/refs/heads/main/CDC_DTM_data_Adults%20who%20consume%20vegetables%20_%201%20time%20daily_2021_Age%20(years)_45%20-%2054.csv")
+nutri_55_64_2021 <- read.csv("https://raw.githubusercontent.com/gillianmcgovern0/cuny-data-608/refs/heads/main/CDC_DTM_data_Adults%20who%20consume%20vegetables%20_%201%20time%20daily_2021_Age%20(years)_55%20-%2064.csv")
+nutri_65_over_2021 <- read.csv("https://raw.githubusercontent.com/gillianmcgovern0/cuny-data-608/refs/heads/main/CDC_DTM_data_Adults%20who%20consume%20vegetables%20_%201%20time%20daily_2021_Age%20(years)_65%20or%20older.csv")
+
+
+# ADDITIONAL ECONOMIC METRICS
+# Source: U.S. Bureau of Labor Statistics.
+productivity_by_state_2024 <- read.csv("https://raw.githubusercontent.com/gillianmcgovern0/cuny-data-608/refs/heads/main/productivity_by_state_2024.csv")
+# For 1970 and 1980, the share of adults who are college graduates includes those who completed four or more years of college regardless of degree earned
+# received a bachelor’s or higher degree
+# US Census Bureau
+educ_status_by_state_2023 <- read.csv("https://raw.githubusercontent.com/gillianmcgovern0/cuny-data-608/refs/heads/main/EducationReport_by_state_2019-2023.csv")
+cost_of_living_index_by_state_2025 <- read.csv("https://raw.githubusercontent.com/gillianmcgovern0/cuny-data-608/refs/heads/main/cost-of-living-index-by-state-2025.csv")
+# from U.S. Department of Health & Human Services | National Institutes of Health
+poverty_by_state_2023 <- read.csv("https://raw.githubusercontent.com/gillianmcgovern0/cuny-data-608/refs/heads/main/poverty_HDPulse_data_export_2023.csv", skip=3)
+# CDC
+malnutri_death_crude_rate_2023 <- read.csv("https://raw.githubusercontent.com/gillianmcgovern0/cuny-data-608/refs/heads/main/malnutrition_Multiple%20Cause%20of%20Death%2C%202018-2023%2C%20Single%20Race%20(1).csv")
+```
+
+```{r}
+nutri_by_state_veg_2021 <- read.csv("https://raw.githubusercontent.com/gillianmcgovern0/cuny-data-608/refs/heads/main/CDC_DTM_data_Adults%20who%20consume%20vegetables%20_%201%20time%20daily_2021.csv")
+```
+
+# Data Preparation
+
+```{r}
+malnutri_death_crude_rate_2023_v1 <- malnutri_death_crude_rate_2023 |>
+  dplyr::select(c(2, 6))
+colnames(malnutri_death_crude_rate_2023_v1) <- c("state", "crude_rate_malnutrition")
+```
+
+
+```{r}
+poverty_by_state_2023_v1 <- poverty_by_state_2023
+poverty_by_state_2023_v1 <- poverty_by_state_2023_v1[,c(1,3)]
+colnames(poverty_by_state_2023_v1) <- c("state", "perc_persons_below_poverty")
+```
+
+```{r}
+productivity_by_state_2024_v1 <- productivity_by_state_2024
+colnames(productivity_by_state_2024_v1) <- c("state", "productivity_by_state_perc_change")
+head(productivity_by_state_2024_v1)
+```
+
+
+```{r}
+educ_status_by_state_2023_v1 <- educ_status_by_state_2023
+educ_status_by_state_2023_v1 <- educ_status_by_state_2023_v1[-c(1:4),c(1,7)]
+# productivity_by_state_2024_v1 <- productivity_by_state_2024_v1[,c(1,7)]
+colnames(educ_status_by_state_2023_v1) <- c("state", "perc_received_bachelors_or_higher_degree")
+educ_status_by_state_2023_v1$perc_received_bachelors_or_higher_degree <- as.numeric(sub("%", "", educ_status_by_state_2023_v1$perc_received_bachelors_or_higher_degree))
+head(educ_status_by_state_2023_v1)
+```
+
+
+```{r}
+# Nutrition by gender
+nutri_female_2021_v1 <- nutri_female_2021
+nutri_female_2021_v1 <- nutri_female_2021_v1[,1:2]
+
+colnames(nutri_female_2021_v1) <- c("state", "adults_who_consume_vegetables_less_than_1_time_daily_perc")
+nutri_female_2021_v1$adults_who_consume_vegetables_less_than_1_time_daily_perc <- as.numeric(sub("%", "", nutri_female_2021_v1$adults_who_consume_vegetables_less_than_1_time_daily_perc))
+nutri_female_2021_v2 <- nutri_female_2021_v1 |>
+  drop_na(adults_who_consume_vegetables_less_than_1_time_daily_perc)
+nutri_female_2021_v2$gender <- "Female"
+nutri_female_2021_v3 <- nutri_female_2021_v2 %>%
+  group_by(gender) %>%
+  summarise(mean_adults_who_consume_vegetables_less_than_1_time_daily_perc = mean(adults_who_consume_vegetables_less_than_1_time_daily_perc))
+head(nutri_female_2021_v3)
+
+nutri_male_2021_v1 <- nutri_male_2021
+nutri_male_2021_v1 <- nutri_male_2021_v1[,1:2]
+colnames(nutri_male_2021_v1) <- c("state", "adults_who_consume_vegetables_less_than_1_time_daily_perc")
+nutri_male_2021_v1$adults_who_consume_vegetables_less_than_1_time_daily_perc <- as.numeric(sub("%", "", nutri_male_2021_v1$adults_who_consume_vegetables_less_than_1_time_daily_perc))
+nutri_male_2021_v2 <- nutri_male_2021_v1 |>
+  drop_na(adults_who_consume_vegetables_less_than_1_time_daily_perc)
+nutri_male_2021_v2$gender <- "Male"
+nutri_male_2021_v3 <- nutri_male_2021_v2 %>%
+  group_by(gender) %>%
+  summarise(mean_adults_who_consume_vegetables_less_than_1_time_daily_perc = mean(adults_who_consume_vegetables_less_than_1_time_daily_perc))
+head(nutri_male_2021_v3)
+
+nutri_by_gender_2021 <- rbind(nutri_female_2021_v3, nutri_male_2021_v3)
+head(nutri_by_gender_2021)
+```
+
+
+```{r}
+# nutrition by age
+nutri_by_state_veg_2021_v1 <- nutri_by_state_veg_2021[,1:2]
+colnames(nutri_by_state_veg_2021_v1) <- c("state", "perc_who_consume_vegetables_less_than_1_time_daily")
+nutri_by_state_veg_2021_v1$perc_who_consume_vegetables_less_than_1_time_daily <- as.numeric(sub("%", "", nutri_by_state_veg_2021_v1$perc_who_consume_vegetables_less_than_1_time_daily))
+nutri_by_state_veg_2021_v1 <- nutri_by_state_veg_2021_v1 |>
+  drop_na(perc_who_consume_vegetables_less_than_1_time_daily)
+nutri_by_state_veg_2021_v1$age <- "Adults"
+
+nutri_children_2021_v1 <- nutri_children_2021
+nutri_children_2021_v1 <- nutri_children_2021_v1[,1:2]
+colnames(nutri_children_2021_v1) <- c("state", "perc_who_consume_vegetables_less_than_1_time_daily")
+nutri_children_2021_v1$perc_who_consume_vegetables_less_than_1_time_daily <- as.numeric(sub("%", "", nutri_children_2021_v1$perc_who_consume_vegetables_less_than_1_time_daily))
+nutri_children_2021_v2 <- nutri_children_2021_v1 |>
+  drop_na(perc_who_consume_vegetables_less_than_1_time_daily)
+nutri_children_2021_v2$age <- "Children"
+nutri_children_2021_v3 <- nutri_children_2021_v2 %>%
+  group_by(age) %>%
+  summarise(mean_perc_who_consume_vegetables_less_than_1_time_daily = mean(perc_who_consume_vegetables_less_than_1_time_daily))
+# head(nutri_children_2021_v3)
+
+nutri_adolescents_2021_v1 <- nutri_adolescents_2021
+nutri_adolescents_2021_v1 <- nutri_adolescents_2021_v1[,1:2]
+colnames(nutri_adolescents_2021_v1) <- c("state", "perc_who_consume_vegetables_less_than_1_time_daily")
+nutri_adolescents_2021_v1$perc_who_consume_vegetables_less_than_1_time_daily <- as.numeric(sub("%", "", nutri_adolescents_2021_v1$perc_who_consume_vegetables_less_than_1_time_daily))
+nutri_adolescents_2021_v2 <- nutri_adolescents_2021_v1 |>
+  drop_na(perc_who_consume_vegetables_less_than_1_time_daily)
+nutri_adolescents_2021_v2$age <- "Adolescents"
+nutri_adolescents_2021_v3 <- nutri_adolescents_2021_v2 %>%
+  group_by(age) %>%
+  summarise(mean_perc_who_consume_vegetables_less_than_1_time_daily = mean(perc_who_consume_vegetables_less_than_1_time_daily))
+# head(nutri_adolescents_2021_v3)
+
+nutri_25_34_2021_v1 <- nutri_25_34_2021
+nutri_25_34_2021_v1 <- nutri_25_34_2021_v1[,1:2]
+colnames(nutri_25_34_2021_v1) <- c("state", "perc_who_consume_vegetables_less_than_1_time_daily")
+nutri_25_34_2021_v1$perc_who_consume_vegetables_less_than_1_time_daily <- as.numeric(sub("%", "", nutri_25_34_2021_v1$perc_who_consume_vegetables_less_than_1_time_daily))
+nutri_25_34_2021_v2 <- nutri_25_34_2021_v1 |>
+  drop_na(perc_who_consume_vegetables_less_than_1_time_daily)
+nutri_25_34_2021_v2$age <- "25-34"
+nutri_25_34_2021_v3 <- nutri_25_34_2021_v2 %>%
+  group_by(age) %>%
+  summarise(mean_perc_who_consume_vegetables_less_than_1_time_daily = mean(perc_who_consume_vegetables_less_than_1_time_daily))
+# head(nutri_25_34_2021_v3)
+
+nutri_18_24_2021_v1 <- nutri_18_24_2021
+nutri_18_24_2021_v1 <- nutri_18_24_2021_v1[,1:2]
+colnames(nutri_18_24_2021_v1) <- c("state", "perc_who_consume_vegetables_less_than_1_time_daily")
+nutri_18_24_2021_v1$perc_who_consume_vegetables_less_than_1_time_daily <- as.numeric(sub("%", "", nutri_18_24_2021_v1$perc_who_consume_vegetables_less_than_1_time_daily))
+nutri_18_24_2021_v2 <- nutri_18_24_2021_v1 |>
+  drop_na(perc_who_consume_vegetables_less_than_1_time_daily)
+nutri_18_24_2021_v2$age <- "18-24"
+nutri_18_24_2021_v3 <- nutri_18_24_2021_v2 %>%
+  group_by(age) %>%
+  summarise(mean_perc_who_consume_vegetables_less_than_1_time_daily = mean(perc_who_consume_vegetables_less_than_1_time_daily))
+# head(nutri_18_24_2021_v3)
+
+nutri_35_44_2021_v1 <- nutri_35_44_2021
+nutri_35_44_2021_v1 <- nutri_35_44_2021_v1[,1:2]
+colnames(nutri_35_44_2021_v1) <- c("state", "perc_who_consume_vegetables_less_than_1_time_daily")
+nutri_35_44_2021_v1$perc_who_consume_vegetables_less_than_1_time_daily <- as.numeric(sub("%", "", nutri_35_44_2021_v1$perc_who_consume_vegetables_less_than_1_time_daily))
+nutri_35_44_2021_v2 <- nutri_35_44_2021_v1 |>
+  drop_na(perc_who_consume_vegetables_less_than_1_time_daily)
+nutri_35_44_2021_v2$age <- "35-44"
+nutri_35_44_2021_v3 <- nutri_35_44_2021_v2 %>%
+  group_by(age) %>%
+  summarise(mean_perc_who_consume_vegetables_less_than_1_time_daily = mean(perc_who_consume_vegetables_less_than_1_time_daily))
+# head(nutri_35_44_2021_v3)
+
+nutri_45_54_2021_v1 <- nutri_45_54_2021
+nutri_45_54_2021_v1 <- nutri_45_54_2021_v1[,1:2]
+colnames(nutri_45_54_2021_v1) <- c("state", "perc_who_consume_vegetables_less_than_1_time_daily")
+nutri_45_54_2021_v1$perc_who_consume_vegetables_less_than_1_time_daily <- as.numeric(sub("%", "", nutri_45_54_2021_v1$perc_who_consume_vegetables_less_than_1_time_daily))
+nutri_45_54_2021_v2 <- nutri_45_54_2021_v1 |>
+  drop_na(perc_who_consume_vegetables_less_than_1_time_daily)
+nutri_45_54_2021_v2$age <- "45-54"
+nutri_45_54_2021_v3 <- nutri_45_54_2021_v2 %>%
+  group_by(age) %>%
+  summarise(mean_perc_who_consume_vegetables_less_than_1_time_daily = mean(perc_who_consume_vegetables_less_than_1_time_daily))
+# head(nutri_45_54_2021_v3)
+
+nutri_55_64_2021_v1 <- nutri_55_64_2021
+nutri_55_64_2021_v1 <- nutri_55_64_2021_v1[,1:2]
+colnames(nutri_55_64_2021_v1) <- c("state", "perc_who_consume_vegetables_less_than_1_time_daily")
+nutri_55_64_2021_v1$perc_who_consume_vegetables_less_than_1_time_daily <- as.numeric(sub("%", "", nutri_55_64_2021_v1$perc_who_consume_vegetables_less_than_1_time_daily))
+nutri_55_64_2021_v2 <- nutri_55_64_2021_v1 |>
+  drop_na(perc_who_consume_vegetables_less_than_1_time_daily)
+nutri_55_64_2021_v2$age <- "55-64"
+nutri_55_64_2021_v3 <- nutri_55_64_2021_v2 %>%
+  group_by(age) %>%
+  summarise(mean_perc_who_consume_vegetables_less_than_1_time_daily = mean(perc_who_consume_vegetables_less_than_1_time_daily))
+# head(nutri_55_64_2021_v3)
+
+nutri_65_over_2021_v1 <- nutri_65_over_2021
+nutri_65_over_2021_v1 <- nutri_65_over_2021_v1[,1:2]
+colnames(nutri_65_over_2021_v1) <- c("state", "perc_who_consume_vegetables_less_than_1_time_daily")
+nutri_65_over_2021_v1$perc_who_consume_vegetables_less_than_1_time_daily <- as.numeric(sub("%", "", nutri_65_over_2021_v1$perc_who_consume_vegetables_less_than_1_time_daily))
+nutri_65_over_2021_v2 <- nutri_65_over_2021_v1 |>
+  drop_na(perc_who_consume_vegetables_less_than_1_time_daily)
+nutri_65_over_2021_v2$age <- "65 or over"
+nutri_65_over_2021_v3 <- nutri_65_over_2021_v2 %>%
+  group_by(age) %>%
+  summarise(mean_perc_who_consume_vegetables_less_than_1_time_daily = mean(perc_who_consume_vegetables_less_than_1_time_daily))
+# head(nutri_65_over_2021_v3)
+
+
+nutri_by_age_2021 <- rbind(nutri_children_2021_v3, nutri_adolescents_2021_v3, nutri_18_24_2021_v3, nutri_25_34_2021_v3, nutri_35_44_2021_v3, nutri_45_54_2021_v3, nutri_55_64_2021_v3, nutri_65_over_2021_v3)
+head(nutri_by_age_2021)
+```
+
+
+```{r}
+# food insecurity by country in 2022
+world_food_insecurity <- world_food_insecurity |>
+  dplyr::select(Country.Name, X2022)
+world_food_insecurity <- na.omit(world_food_insecurity)
+colnames(world_food_insecurity) <- c("country", "mod_or_sev_food_insecurity_in_pop_perc")
+head(world_food_insecurity)
+```
+
+
+
+```{r}
+# food insecurity by gender and by age group
+colnames(food_insecurity_by_gender_age) <- c("characteristic", "perc", "standard_error", "95_conf_inter")
+
+food_insecurity_by_gender_2021 <- food_insecurity_by_gender_age |>
+  filter(characteristic %in% c("Men","Women"))
+colnames(food_insecurity_by_gender_2021) <- c("gender", "perc", "standard_error", "95_conf_inter")
+
+  
+food_insecurity_by_age_2021 <- food_insecurity_by_gender_age |>
+  filter(characteristic %in% c("18Ð34","35Ð44", "45Ð54", "55Ð64", "65 and over"))
+colnames(food_insecurity_by_age_2021) <- c("age_group", "perc", "standard_error", "95_conf_inter")
+food_insecurity_by_age_2021$age_group <- c("18-34", "35-44", "45-54", "55-64", "65 and over")
+
+```
+
+```{r}
+# snap recipients by age group
+snap_food_insecurity_by_age_2023_v1 <- snap_food_insecurity_by_age_2023[1:8,]
+colnames(snap_food_insecurity_by_age_2023_v1) <- c("age", "perc_food_stamp_recipients", "among", "category")
+snap_food_insecurity_by_age_2023_v1$age <- c("0-5", "6-11", "12-14", "15-17", "18-24", "25-44", "45-64", "65 and older")
+snap_food_insecurity_by_age_2023_v1$perc_food_stamp_recipients <- as.numeric(sub("%", "", snap_food_insecurity_by_age_2023_v1$perc_food_stamp_recipients))
+head(snap_food_insecurity_by_age_2023_v1, 10)
+```
+
+
+```{r}
+# food insecurity by state
+food_insecurity_by_state_v1 <- food_insecurity_by_state
+food_insecurity_by_state_v1 <- food_insecurity_by_state_v1 |>
+  filter(Year == "20212023")
+food_insecurity_by_state_v1$Year <- "2023"
+food_insecurity_by_state_v1$State_Name <- state.name[match(food_insecurity_by_state_v1$State, state.abb)]
+colnames(food_insecurity_by_state_v1) <- c("year", "state_abbrev", "food_insecurity_prevalence", "food_insecurity_margin_of_error", "very_low_food_insecurity_prevalence", "very_low_food_insecurity_margin_of_error", "state")
+head(food_insecurity_by_state_v1)
+```
+
+```{r}
+# nutrition by state
+colnames(nutri_by_state_2021) <- c("state", "adults_who_consume_fruit_less_than_1_time_daily", "confidence_interval", "sample_size")
+nutri_by_state_2021_v1 <- nutri_by_state_2021
+nutri_by_state_2021_v1$adults_who_consume_fruit_less_than_1_time_daily <- as.numeric(sub("%", "", nutri_by_state_2021_v1$adults_who_consume_fruit_less_than_1_time_daily))
+nutri_by_state_2021_v1_bins <- mutate(
+  nutri_by_state_2021_v1,
+  nutrition_bins = cut(
+      adults_who_consume_fruit_less_than_1_time_daily,
+      breaks = c(0, 35, 40, 45, 50, 55),
+      labels = c("0%-35%", "36%-40%", "41%-45%", "46%-50%", "51%-55%"),
+      right = FALSE
+    )
+  )
+
+```
+
+
+```{r}
+nutri_by_state_veg_2021_bins_adult <- mutate(
+  nutri_by_state_veg_2021_v1,
+  nutrition_bins = cut(
+      perc_who_consume_vegetables_less_than_1_time_daily,
+      breaks = c(0, 17, 19, 22, 50),
+      labels = c("0%-17%", "18%-19%", "20%-22%", "23%-50%"),
+      right = FALSE
+    )
+  )
+nutri_by_state_veg_2021_bins_children <- mutate(
+  nutri_children_2021_v2,
+  nutrition_bins = cut(
+      perc_who_consume_vegetables_less_than_1_time_daily,
+      breaks = c(0, 35, 40, 45, 50, 65),
+      labels = c("0%-35%", "36%-40%", "41%-45%", "46%-50%", "51%-65%"),
+      right = FALSE
+    )
+  )
+
+nutri_by_state_veg_2021_bins_adolescents <- mutate(
+  nutri_adolescents_2021_v2,
+  nutrition_bins = cut(
+      perc_who_consume_vegetables_less_than_1_time_daily,
+      breaks = c(0, 35, 40, 45, 50, 65),
+      labels = c("0%-35%", "36%-40%", "41%-45%", "46%-50%", "51%-65%"),
+      right = FALSE
+    )
+  )
+```
+
+
+# Ideal Scenario
+
+The US is not the worst for food insecurity.
+
+```{r, fig.width=20, fig.height=10, warning=FALSE}
+world_food_insecurity_desc <- arrange(world_food_insecurity, desc(mod_or_sev_food_insecurity_in_pop_perc))
+
+world_food_insecurity_desc_150 <- head(world_food_insecurity_desc, 125)
+world_food_insecurity_desc_150$highlight <- ifelse(world_food_insecurity_desc_150$country == "United States", TRUE, FALSE)
+
+
+ggplot(world_food_insecurity_desc_150, aes(x = reorder(country, mod_or_sev_food_insecurity_in_pop_perc), y = mod_or_sev_food_insecurity_in_pop_perc, fill = highlight)) + 
+  geom_bar(stat = "identity") +
+  scale_fill_manual(values = c("FALSE" = "grey", "TRUE" = "navy")) +
+  # guides(fill = FALSE) +
+  scale_y_continuous(
+    name = "Moderate or Severe Food Insecurity in the Population",
+  ) +
+  # geom_text(aes(label = paste(prettyNum(round(mod_or_sev_food_insecurity_in_pop_perc)), "%")),
+  #           color = "white",
+  #           size = 3.6,
+  #           hjust = 1.3) +
+  # coord_flip() +
+  theme(
+    text = element_text(color = "gray30"),
+    axis.text.x = element_text(color = "gray30", angle = 45, hjust = 1),
+    axis.title.y = element_blank(),
+    axis.line.y = element_blank(),
+    axis.ticks.length = unit(0, "pt"),
+    axis.text.y = element_text(
+      size = 8,
+    ),
+  ) +
+  labs(title = "Prevalence of Moderate or Severe Food Insecurity in the Population (%), 2022",
+       subtitle = "United States Ranks as no. 109 for Highest Food Insecurity in the World.",
+       caption = "Data from World Bank Group.",
+       x = "Moderate or Severe Food Insecurity in the Population",
+       y = "Percent") +
+  annotate("label", x = 20, y = 25, label = "Compared to other countries, food insecurity\ndoesn't seem to be a major problem in the US.", size = 5, fill =
+             "#F6F6FF", color = "black", label.size = 1, label.color="#F6F6FF") +
+  theme(legend.position = "none")
+```
+
+
+
+# Problem - Show the Facts
+
+
+```{r}
+# Problem statement - the facts by state, gender, age for food insecurity
+
+# FOOD INSECURITY
+# set up for geam_statebins
+state_names <- c("Alabama", "Alaska", "Arizona", "Arkansas", "California", "Colorado", "Connecticut", "Delaware", "Florida", "Georgia", "Hawaii", "Idaho", "Illinois", "Indiana", "Iowa", "Kansas", "Kentucky", "Louisiana", "Maine", "Maryland", "Massachusetts", "Michigan", "Minnesota", "Mississippi", "Missouri", "Montana", "Nebraska", "Nevada", "New Hampshire", "New Jersey", "New Mexico", "New York", "North Carolina", "North Dakota", "Ohio", "Oklahoma", "Oregon", "Pennsylvania", "Rhode Island", "South Carolina", "South Dakota", "Tennessee", "Texas", "Utah", "Vermont", "Virginia", "Washington", "West Virginia", "Wisconsin", "Wyoming")
+
+food_insecurity_by_state_v1_filtered <- food_insecurity_by_state_v1 %>%
+  filter(tolower(state) %in% tolower(state_names))
+
+# 12.2% food insecurity is the average from 2021-2023
+food_insecurity_by_state_v1_filtered_bins <- mutate(
+  food_insecurity_by_state_v1_filtered,
+  food_insecurity_bins = cut(
+      food_insecurity_prevalence,
+      breaks = c(0, 11.2, 13.2, 20),
+      labels = c("Below Average", "Within 1% of Average", "Above Average"),
+      right = FALSE
+    )
+  )
+
+food_insecurity_by_state_v1_filtered_bins$state <- str_to_title(food_insecurity_by_state_v1_filtered_bins$state)
+
+filter(food_insecurity_by_state_v1_filtered_bins) %>%
+  ggplot(aes(state = state, fill = food_insecurity_bins)) +
+  geom_statebins(lbl_size = 14/.pt) +
+  expand_limits(x = -1.3) + # make space for legend
+  coord_equal(expand = FALSE) +
+   scale_fill_discrete_sequential(
+    h1 = -83, h2 = 20, c1 = 30, cmax = 40, c2 = 0, l1 = 20, l2 = 100, p1 = 1, p2 = 1.2, rev = TRUE, 
+    name = "Food Insecurity Level",
+    nmax = 7,
+    order = 2:6,
+    guide = guide_legend(
+      override.aes = list(colour = "white", size = 1),
+      reverse = TRUE
+    )
+  ) +
+  theme(
+    panel.grid.major = element_blank(), # Removes grid lines
+    panel.grid.minor = element_blank(),
+    panel.border = element_blank(),
+    panel.background = element_blank(),
+    axis.title.x = element_blank(), # Remove x-axis title
+    axis.text.x = element_blank(),  # Remove x-axis text (labels)
+    axis.title.y = element_blank(), # Remove y-axis title
+    axis.text.y = element_blank(),   # Remove y-axis text (labels)
+    axis.ticks.x = element_blank(), # Remove x-axis tick marks
+    axis.ticks.y = element_blank(),  # Remove y-axis tick marks
+    legend.background = element_blank(),
+    legend.position = c(0, 1),
+    legend.justification = c(0, 1),
+    legend.spacing.x = grid::unit(2, "pt"),
+    legend.spacing.y = grid::unit(2, "pt"),
+    legend.title = element_text(hjust = 0.5),
+    legend.key.width = grid::unit(18, "pt"),
+    legend.key.height = grid::unit(15, "pt")
+  ) +
+  labs(title = "Food Security in the United States, 2023",
+       subtitle = "Arkansas, Louisiana, South Carolina, Texas, Oklahoma, Mississippi,\nWest Virginia and Kentucky are all above the average level of food insecurity.")
+#######
+
+# GENDER (ADULTS)
+ggplot(food_insecurity_by_gender_2021, aes(x = gender, y = perc, fill = gender)) + 
+  geom_bar(stat = "identity") +
+  # scale_fill_manual(values = c("FALSE" = "grey", "TRUE" = "navy")) +
+  # guides(fill = FALSE) +
+  scale_y_continuous(
+    name = "Percent",
+  ) +
+  theme(
+    text = element_text(color = "gray30"),
+    axis.text.x = element_text(color = "gray30"),
+    axis.title.y = element_blank(),
+    axis.line.y = element_blank(),
+    axis.ticks.length = unit(0, "pt"),
+    axis.text.y = element_text(
+      size = 8,
+    ),
+  ) +
+  scale_fill_hue(c = 40) +
+  labs(title = "Adults Living in Families Experiencing Food Insecurity in the\nPast 30 Days by Gender in the US, 2021",
+       subtitle = "Women have experienced more food insecurity than men in the US.",
+       caption = "Data from National Center for Health Statistics, National Health Interview Survey.",
+       y = "Percent",
+       x = "Gender") +
+  theme(legend.position = "none")
+
+# AGE GROUP (SNAP)
+snap_food_insecurity_by_age_2023_v1$age <- factor(snap_food_insecurity_by_age_2023_v1$age, levels = c("0-5", "6-11", "12-14", "15-17", "18-24", "25-44", "45-64", "65 and older"))
+ggplot(snap_food_insecurity_by_age_2023_v1, aes(x = age, y = perc_food_stamp_recipients, fill=age)) + 
+  geom_bar(stat = "identity") +
+  # scale_fill_manual(values = c("FALSE" = "grey", "TRUE" = "navy")) +
+  # guides(fill = FALSE) +
+  scale_y_continuous(
+    name = "Moderate or Severe Food Insecurity in the Population",
+  ) +
+  theme(
+    text = element_text(color = "gray30"),
+    axis.text.x = element_text(color = "gray30"),
+    axis.title.y = element_blank(),
+    axis.line.y = element_blank(),
+    axis.ticks.length = unit(0, "pt"),
+    axis.text.y = element_text(
+      size = 8,
+    ),
+  ) +
+  scale_fill_hue(c = 40) +
+  labs(title = "SNAP Recipients by Age Group, 2021",
+       subtitle = "Both very young children and young adults have required SNAP benefits.",
+       caption = "Data from USDA Food and Nutrition Service.",
+       x = "Age Group",
+       y = "Percent") +
+  theme(legend.position = "none")
+```
+
+
+```{r}
+# Problem statement - the facts by state, gender, age for nutrition
+
+
+# NUTRITION
+# set up for geam_statebins
+
+nutri_by_state_2021_v1_bins_filtered <- nutri_by_state_2021_v1_bins %>%
+  filter(tolower(state) %in% tolower(state_names))
+
+# food_insecurity_by_state_v1_filtered_bins$state <- str_to_title(food_insecurity_by_state_v1_filtered_bins$state)
+
+filter(nutri_by_state_2021_v1_bins_filtered) %>%
+  ggplot(aes(state = state, fill = nutrition_bins)) +
+  geom_statebins(lbl_size = 14/.pt) +
+  expand_limits(x = -1.3) + # make space for legend
+  coord_equal(expand = FALSE) +
+   scale_fill_discrete_sequential(
+    h1 = -83, h2 = 20, c1 = 30, cmax = 40, c2 = 0, l1 = 20, l2 = 100, p1 = 1, p2 = 1.2, rev = TRUE, 
+    name = "Percentage",
+    nmax = 7,
+    order = 2:6,
+    guide = guide_legend(
+      override.aes = list(colour = "white", size = 1),
+      reverse = TRUE
+    )
+  ) +
+  theme(
+    panel.grid.major = element_blank(), # Removes grid lines
+    panel.grid.minor = element_blank(),
+    panel.border = element_blank(),
+    panel.background = element_blank(),
+    axis.title.x = element_blank(), # Remove x-axis title
+    axis.text.x = element_blank(),  # Remove x-axis text (labels)
+    axis.title.y = element_blank(), # Remove y-axis title
+    axis.text.y = element_blank(),   # Remove y-axis text (labels)
+    axis.ticks.x = element_blank(), # Remove x-axis tick marks
+    axis.ticks.y = element_blank(),  # Remove y-axis tick marks
+    legend.background = element_blank(),
+    legend.position = c(0, 1),
+    legend.justification = c(0, 1),
+    legend.spacing.x = grid::unit(2, "pt"),
+    legend.spacing.y = grid::unit(2, "pt"),
+    legend.title = element_text(hjust = 0.5),
+    legend.key.width = grid::unit(18, "pt"),
+    legend.key.height = grid::unit(15, "pt")
+  ) +
+  labs(title = "Percentage of Adults Who Consume Fruit Less Than 1 Time Daily in the US, 2021",
+       subtitle = "Southern states experience more malnutrition.",
+       caption = "Data from CDC.")
+#######
+
+# GENDER (ADULTS)
+ggplot(nutri_by_gender_2021, aes(x = gender, y = mean_adults_who_consume_vegetables_less_than_1_time_daily_perc, fill = gender)) + 
+  geom_bar(stat = "identity") +
+  # scale_fill_manual(values = c("FALSE" = "grey", "TRUE" = "navy")) +
+  # guides(fill = FALSE) +
+  scale_y_continuous(
+    name = "Percent",
+  ) +
+  theme(
+    text = element_text(color = "gray30"),
+    axis.text.x = element_text(color = "gray30"),
+    axis.title.y = element_blank(),
+    axis.line.y = element_blank(),
+    axis.ticks.length = unit(0, "pt"),
+    axis.text.y = element_text(
+      size = 8,
+    ),
+  ) +
+  scale_fill_hue(c = 40) +
+  labs(title = "Average Percentage Adults Who Consume Vegetables Less Than\n1 Time Daily in the US by Gender, 2021",
+       subtitle = "Men experience more malnutrition.",
+       caption = "Data from CDC.",
+       y = "Percent",
+       x = "Gender") +
+  theme(legend.position = "none")
+
+
+
+```
+
+
+
+
+```{r}
+filter(nutri_by_state_veg_2021_bins_adolescents) %>%
+  ggplot(aes(state = state, fill = nutrition_bins)) +
+  geom_statebins(lbl_size = 14/.pt) +
+  expand_limits(x = -1.3) + # make space for legend
+  coord_equal(expand = FALSE) +
+   scale_fill_discrete_sequential(
+    h1 = -83, h2 = 20, c1 = 30, cmax = 40, c2 = 0, l1 = 20, l2 = 100, p1 = 1, p2 = 1.2, rev = TRUE, 
+    name = "Percentage",
+    nmax = 7,
+    order = 2:6,
+    guide = guide_legend(
+      override.aes = list(colour = "white", size = 1),
+      reverse = TRUE
+    )
+  ) +
+  theme(
+    panel.grid.major = element_blank(), # Removes grid lines
+    panel.grid.minor = element_blank(),
+    panel.border = element_blank(),
+    panel.background = element_blank(),
+    axis.title.x = element_blank(), # Remove x-axis title
+    axis.text.x = element_blank(),  # Remove x-axis text (labels)
+    axis.title.y = element_blank(), # Remove y-axis title
+    axis.text.y = element_blank(),   # Remove y-axis text (labels)
+    axis.ticks.x = element_blank(), # Remove x-axis tick marks
+    axis.ticks.y = element_blank(),  # Remove y-axis tick marks
+    legend.background = element_blank(),
+    legend.position = c(0, 1),
+    legend.justification = c(0, 1),
+    legend.spacing.x = grid::unit(2, "pt"),
+    legend.spacing.y = grid::unit(2, "pt"),
+    legend.title = element_text(hjust = 0.5),
+    legend.key.width = grid::unit(18, "pt"),
+    legend.key.height = grid::unit(15, "pt")
+  ) +
+  labs(title = "Adolescents Who Consume Vegetables < 1 Time Daily, 2021",
+       subtitle = "Southern states experience more malnutrition for Adolescents.",
+       caption = "Data from CDC.")
+```
+
+```{r}
+filter(nutri_by_state_veg_2021_bins_adult) %>%
+  ggplot(aes(state = state, fill = nutrition_bins)) +
+  geom_statebins(lbl_size = 14/.pt) +
+  expand_limits(x = -1.3) + # make space for legend
+  coord_equal(expand = FALSE) +
+   scale_fill_discrete_sequential(
+    h1 = -83, h2 = 20, c1 = 30, cmax = 40, c2 = 0, l1 = 20, l2 = 100, p1 = 1, p2 = 1.2, rev = TRUE, 
+    name = "Percentage",
+    nmax = 7,
+    order = 2:6,
+    guide = guide_legend(
+      override.aes = list(colour = "white", size = 1),
+      reverse = TRUE
+    )
+  ) +
+  theme(
+    panel.grid.major = element_blank(), # Removes grid lines
+    panel.grid.minor = element_blank(),
+    panel.border = element_blank(),
+    panel.background = element_blank(),
+    axis.title.x = element_blank(), # Remove x-axis title
+    axis.text.x = element_blank(),  # Remove x-axis text (labels)
+    axis.title.y = element_blank(), # Remove y-axis title
+    axis.text.y = element_blank(),   # Remove y-axis text (labels)
+    axis.ticks.x = element_blank(), # Remove x-axis tick marks
+    axis.ticks.y = element_blank(),  # Remove y-axis tick marks
+    legend.background = element_blank(),
+    legend.position = c(0, 1),
+    legend.justification = c(0, 1),
+    legend.spacing.x = grid::unit(2, "pt"),
+    legend.spacing.y = grid::unit(2, "pt"),
+    legend.title = element_text(hjust = 0.5),
+    legend.key.width = grid::unit(18, "pt"),
+    legend.key.height = grid::unit(15, "pt")
+  ) +
+  labs(title = "Adults Who Consume Vegetables < 1 Time Daily, 2021",
+       subtitle = "Many states, inclding southern states, experience high malnutrition.",
+       caption = "Data from CDC.")
+```
+
+
+```{r}
+filter(nutri_by_state_veg_2021_bins_children) %>%
+  ggplot(aes(state = state, fill = nutrition_bins)) +
+  geom_statebins(lbl_size = 14/.pt) +
+  expand_limits(x = -1.3) + # make space for legend
+  coord_equal(expand = FALSE) +
+   scale_fill_discrete_sequential(
+    h1 = -83, h2 = 20, c1 = 30, cmax = 40, c2 = 0, l1 = 20, l2 = 100, p1 = 1, p2 = 1.2, rev = TRUE, 
+    name = "Percentage",
+    nmax = 7,
+    order = 2:6,
+    guide = guide_legend(
+      override.aes = list(colour = "white", size = 1),
+      reverse = TRUE
+    )
+  ) +
+  theme(
+    panel.grid.major = element_blank(), # Removes grid lines
+    panel.grid.minor = element_blank(),
+    panel.border = element_blank(),
+    panel.background = element_blank(),
+    axis.title.x = element_blank(), # Remove x-axis title
+    axis.text.x = element_blank(),  # Remove x-axis text (labels)
+    axis.title.y = element_blank(), # Remove y-axis title
+    axis.text.y = element_blank(),   # Remove y-axis text (labels)
+    axis.ticks.x = element_blank(), # Remove x-axis tick marks
+    axis.ticks.y = element_blank(),  # Remove y-axis tick marks
+    legend.background = element_blank(),
+    legend.position = c(0, 1),
+    legend.justification = c(0, 1),
+    legend.spacing.x = grid::unit(2, "pt"),
+    legend.spacing.y = grid::unit(2, "pt"),
+    legend.title = element_text(hjust = 0.5),
+    legend.key.width = grid::unit(18, "pt"),
+    legend.key.height = grid::unit(15, "pt")
+  ) +
+  labs(title = "Children who consume vegetables < 1 time daily, 2021",
+       subtitle = "Malnutrition is an issue for children in the US.",
+       caption = "Data from CDC.")
+```
+
+# Deep Dive - the Relationships
+
+```{r}
+poverty_by_state_2023_v1_filtered <- poverty_by_state_2023_v1 %>%
+  filter(tolower(state) %in% tolower(state_names))
+poverty_by_state_2023_v1_filtered <- arrange(poverty_by_state_2023_v1_filtered, state)
+food_insecurity_by_state_v1_filtered_sorted <- arrange(food_insecurity_by_state_v1_filtered, state)
+
+merged_df <- cbind(food_insecurity_by_state_v1_filtered_sorted, poverty_by_state_2023_v1_filtered)
+merged_df <- merged_df |>
+  dplyr::select(-c(8))
+head(merged_df)
+```
+
+
+```{r, warning=FALSE}
+# poverty vs food insecurity
+
+
+p1 <- ggplot(merged_df, aes(x=food_insecurity_prevalence, y=perc_persons_below_poverty, label=state_abbrev)) + 
+  geom_point(alpha=0.3) +
+  geom_smooth(method = "lm", se = FALSE, color = "darkred", linetype = "solid") +
+  geom_text(
+    # label=rownames(data), 
+    nudge_x = 0.025, nudge_y = 0.025,
+    check_overlap = T
+  ) +
+  scale_x_continuous(
+    # name = "Annual Mean Wage (in US Dollars)",
+    # limits = c(0.4, 1.1)
+  ) +
+  # guides(fill = "none") +
+  annotate("label", x = 16.3, y = 10, label = "As food insecurity increases, so does the amount of\npeople living below the poverty level.", size = 3.5, fill =
+             "#F6F6FF", color = "black", label.size = 1, label.color="#F6F6FF") +
+  labs(
+    title = "High Food Insecurity in Areas with High Poverty in the US",
+    subtitle = "As food insecurity increases, so does the percentage of people below the poverty level.",
+    x = "Food Insecurity Prevalence (2023)",
+    y = "Percent"
+  ) +
+    theme(legend.position = "bottom")
+p1
+
+```
+
+
+```{r, warning=FALSE}
+# malnutrition vs food insecurity
+nutri_by_state_2021_v1_bins_filtered <- nutri_by_state_2021_v1_bins_filtered %>%
+  filter(tolower(state) %in% tolower(state_names))
+nutri_by_state_2021_v1_bins_filtered <- arrange(nutri_by_state_2021_v1_bins_filtered, state)
+
+merged_df2 <- cbind(food_insecurity_by_state_v1_filtered_sorted, nutri_by_state_2021_v1_bins_filtered)
+merged_df2 <- merged_df2 |>
+  dplyr::select(-c(8))
+head(merged_df2)
+
+
+p1 <- ggplot(merged_df2, aes(x=food_insecurity_prevalence, y=adults_who_consume_fruit_less_than_1_time_daily, label=state_abbrev)) + 
+  geom_point(alpha=0.3) +
+  geom_smooth(method = "lm", se = FALSE, color = "darkred", linetype = "solid") +
+  geom_text(
+    # label=rownames(data), 
+    nudge_x = 0.025, nudge_y = 0.025,
+    check_overlap = T
+  ) +
+  scale_x_continuous(
+    # name = "Annual Mean Wage (in US Dollars)",
+    # limits = c(0.4, 1.1)
+  ) +
+  # guides(fill = "none") +
+  annotate("label", x = 16, y = 37, label = "As food insecurity increases, it's more likely\nadults will experience malnutrition.", size = 3.5, fill =
+             "#F6F6FF", color = "black", label.size = 1, label.color="#F6F6FF") +
+  labs(
+    title = "Food Insecurity Impacts on Malnutrition in the US",
+    subtitle = "There is a strong, positive correlation with percent of adults who consume fruit less\nthan 1 time daily and food insecurity in the US.",
+    x = "Food Insecurity Prevalence (2023)",
+    y = "Percent"
+  ) +
+    theme(legend.position = "bottom")
+p1
+
+
+```
+
+# Conclusion - Major Consequences
+
+```{r, fig.width=15, fig.height=10, warning=FALSE}
+# malnutrition vs economic performance metrics
+
+productivity_by_state_2024_v1_filtered <- productivity_by_state_2024_v1 %>%
+  filter(tolower(state) %in% tolower(state_names))
+productivity_by_state_2024_v1_filtered$productivity_by_state_perc_change <- as.numeric(productivity_by_state_2024_v1_filtered$productivity_by_state_perc_change)
+productivity_by_state_2024_v1_filtered_sorted <- arrange(productivity_by_state_2024_v1_filtered, state)
+
+educ_status_by_state_2023_v1_filtered <- educ_status_by_state_2023_v1 %>%
+  filter(tolower(state) %in% tolower(state_names))
+educ_status_by_state_2023_v1_filtered$perc_received_bachelors_or_higher_degree <- as.numeric(educ_status_by_state_2023_v1_filtered$perc_received_bachelors_or_higher_degree)
+educ_status_by_state_2023_v1_filtered_sorted <- arrange(educ_status_by_state_2023_v1_filtered, state)
+
+
+malnutri_death_crude_rate_2023_v1_filtered <- malnutri_death_crude_rate_2023_v1 %>%
+  filter(tolower(state) %in% tolower(state_names))
+malnutri_death_crude_rate_2023_v1_filtered$crude_rate_malnutrition <- as.numeric(malnutri_death_crude_rate_2023_v1_filtered$crude_rate_malnutrition)
+malnutri_death_crude_rate_2023_v1_filtered_sorted <- arrange(malnutri_death_crude_rate_2023_v1_filtered, state)
+
+conclusion_df <- cbind(food_insecurity_by_state_v1_filtered_sorted, productivity_by_state_2024_v1_filtered_sorted, educ_status_by_state_2023_v1_filtered_sorted, malnutri_death_crude_rate_2023_v1_filtered_sorted)
+conclusion_df <- conclusion_df |>
+  dplyr::select(c(2, 3, 7, 9, 11, 13))
+conclusion_df_long <- conclusion_df %>%
+  gather(key = "Variable", value = "Value", productivity_by_state_perc_change, perc_received_bachelors_or_higher_degree)
+conclusion_df_long_sorted <- conclusion_df_long |>
+  arrange(desc(Value))
+# head(conclusion_df_long_sorted)
+conclusion_df_long_sorted$Variable <- sub("productivity_by_state_perc_change", "Productivity Percent Change, 1 Year Percent Change (2024)", conclusion_df_long_sorted$Variable)
+conclusion_df_long_sorted$Variable <- sub("perc_received_bachelors_or_higher_degree", "Percent Received Bachelors or Higher Degree (2023)", conclusion_df_long_sorted$Variable)
+conclusion_df_long_sorted$Variable <- sub("crude_rate_malnutrition", "Malnutrition Crude Rate (2023)", conclusion_df_long_sorted$Variable)
+
+p1 <- ggplot(conclusion_df_long_sorted, aes(x=food_insecurity_prevalence, y=Value, color = Variable, label=state_abbrev)) + 
+  geom_point(alpha = 0.4) +
+  geom_text(
+    alpha = 0.3,
+    nudge_x = 0.05,
+    nudge_y = 0.05,
+    check_overlap = T
+  ) +
+  scale_x_continuous(
+    # name = "Annual Mean Wage (in US Dollars)",
+    # limits = c(0.4, 1.1)
+  ) +
+  # guides(fill = "none") +
+  annotate("label", x = 10, y = 18, label = "Without proper nutrition, people are less likely to gain a university degree,\nand are less likely to be productive at work, ultimately hurting the economy.",
+           size = 4.5,
+           fill = "#F6F6FF", color = "black", label.size = 1, label.color="#F6F6FF") +
+  geom_labelsmooth(aes(label = Variable), fill = "#F6F6FF",
+                method = "lm", formula = y ~ x, 
+                size = 4, linewidth = 1.5, boxlinewidth = 0.4) +
+  scale_colour_manual(values = c("deepskyblue4", "darkgreen")) +
+  labs(
+    title = "Economic Impact of Food Insecurity in the United States",
+    subtitle = "As food insecurity increases, so does worker productivity and education attainment in the US.",
+    y = "Percent",
+    x = "Food Insecurity Prevalence (2023)"
+  ) +
+    scale_fill_gradient(low = "red", high = "darkred", name="Temperature\nAnomaly (°F)") + # Simple gradient from red to darkred
+    theme(legend.position = "none")
+p1
+```
+
+
+```{r, fig.width=15, fig.height=10, warning=FALSE}
+conclusion_df_long <- conclusion_df %>%
+  gather(key = "Variable", value = "Value", productivity_by_state_perc_change, perc_received_bachelors_or_higher_degree, crude_rate_malnutrition)
+conclusion_df_long_sorted <- conclusion_df_long |>
+  arrange(desc(Value))
+# head(conclusion_df_long_sorted)
+conclusion_df_long_sorted$Variable <- sub("productivity_by_state_perc_change", "Productivity Percent Change, 1 Year Percent Change (2024)", conclusion_df_long_sorted$Variable)
+conclusion_df_long_sorted$Variable <- sub("perc_received_bachelors_or_higher_degree", "Percent Received Bachelors or Higher Degree (2023)", conclusion_df_long_sorted$Variable)
+conclusion_df_long_sorted$Variable <- sub("crude_rate_malnutrition", "Malnutrition Related Death Crude Rate (2023)", conclusion_df_long_sorted$Variable)
+
+p1 <- ggplot(conclusion_df_long_sorted, aes(x=food_insecurity_prevalence, y=Value, color = Variable, label=state_abbrev, alpha=Variable)) + 
+  geom_point(alpha = 0.4) +
+  geom_text(
+    alpha = 0.3,
+    nudge_x = 0.05,
+    nudge_y = 0.05,
+    check_overlap = T
+  ) +
+  scale_x_continuous(
+    # name = "Annual Mean Wage (in US Dollars)",
+    # limits = c(0.4, 1.1)
+  ) +
+  # guides(fill = "none") +
+  annotate("label", x = 10.3, y = 18, label = "Without proper nutrition, the economy is unfortunately not the only thing that suffers.\nMore importantly, high food insecurity and malnutrition is also causing people to die.",
+           size = 4.5,
+           fill = "#F6F6FF", color = "black", label.size = 1, label.color="#F6F6FF") +
+  geom_labelsmooth(aes(label = Variable), fill = "#F6F6FF",
+                method = "lm", formula = y ~ x, 
+                size = 4, linewidth = 1.5, boxlinewidth = 0.4) +
+  scale_colour_manual(values = c("darkred", "deepskyblue4", "darkgreen", 0.7)) +
+  scale_alpha_manual(values = c(1, 0.3, 0.3)) +
+  labs(
+    title = "Overall Impact of Food Insecurity in the United States",
+    subtitle = "As food insecurity increases, deaths related to malnutrition also increases.",
+    y = "Percent",
+    x = "Food Insecurity Prevalence (2023)"
+  ) +
+    theme(legend.position = "none")
+p1
+```
+
